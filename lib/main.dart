@@ -1,5 +1,5 @@
+import 'package:eboss_ai/pages/welcome/splash.dart';
 import 'package:flutter/material.dart';
-import 'package:eboss_ai/pages/welcome/splash_page.dart';
 
 void main() {
   runApp(const MyApp());
@@ -14,10 +14,8 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Flutter Demo',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const SplashPage(title: 'Flutter Demo Home Page'),
+      theme: ThemeData(scaffoldBackgroundColor: const Color(0xFFE9EEEA)),
+      home: const SplashPage(),
     );
   }
 }

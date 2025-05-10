@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:eboss_ai/component/navigation.dart';
 import 'package:eboss_ai/component/content/camera_grid.dart';
+import 'package:eboss_ai/component/content/ai.dart';
+import 'package:eboss_ai/component/content/settings.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -10,7 +12,18 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  final PageController _pageController = PageController();
   int _currentIndex = 0;
+
+  void _handleTabSelected(int index) {
+    if (_currentIndex == index) return;
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+    setState(() => _currentIndex = index);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,9 +33,7 @@ class _HomePageState extends State<HomePage> {
         preferredSize: const Size.fromHeight(70),
         child: CustomNavigationBar(
           initialIndex: _currentIndex,
-          onTabSelected: (index) {
-            setState(() => _currentIndex = index);
-          },
+          onTabSelected: _handleTabSelected,
         ),
       ),
       body: Container(
@@ -33,36 +44,16 @@ class _HomePageState extends State<HomePage> {
             colors: [Color(0xFFE9F4D7), Color(0xFFDFF4F9)],
           ),
         ),
-        child: const SafeArea(top: true, child: CameraGrid()),
+        child: SafeArea(
+          top: true,
+          child: PageView(
+            controller: _pageController,
+            physics: const NeverScrollableScrollPhysics(),
+            onPageChanged: (index) => setState(() => _currentIndex = index),
+            children: const [CameraGrid(), AiPage(), SettingsPage()],
+          ),
+        ),
       ),
     );
-  }
-}
-
-// Example pages
-class BasicPage extends StatelessWidget {
-  const BasicPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(child: Text('Basic Page'));
-  }
-}
-
-class AIPage extends StatelessWidget {
-  const AIPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(child: Text('AI Page'));
-  }
-}
-
-class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(child: Text('Settings Page'));
   }
 }

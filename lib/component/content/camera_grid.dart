@@ -1,7 +1,48 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_vlc_player/flutter_vlc_player.dart';
 
-class CameraGrid extends StatelessWidget {
+class CameraGrid extends StatefulWidget {
   const CameraGrid({super.key});
+
+  @override
+  State<CameraGrid> createState() => _CameraGridState();
+}
+
+class _CameraGridState extends State<CameraGrid> {
+  final List<String> cameraUrls = [
+    'rtsp://admin:JZRGJS@192.168.0.104:554/h264/ch01/sub/av_stream',
+    'rtsp://admin:Reolink%40usj1%2Fa@192.168.0.5:554/Preview_01_sub',
+    'rtsp://admin:DKIONN@192.168.0.224:554/h264/ch01/sub/av_stream',
+  ];
+
+  final Map<int, VlcPlayerController> _controllers = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeControllers();
+  }
+
+  void _initializeControllers() {
+    for (int i = 0; i < cameraUrls.length; i++) {
+      _controllers[i] = VlcPlayerController.network(
+        cameraUrls[i],
+        options: VlcPlayerOptions(
+          advanced: VlcAdvancedOptions([
+            VlcAdvancedOptions.networkCaching(2000),
+          ]),
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    for (var controller in _controllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,17 +55,33 @@ class CameraGrid extends StatelessWidget {
             flex: 3,
             child: Row(
               children: [
-                // First Column (Big Box)
-                Expanded(flex: 2, child: _CameraContainer(cameraNumber: 1)),
+                // Main Camera
+                Expanded(
+                  flex: 2,
+                  child: _CameraContainer(
+                    label: "Main Camera",
+                    controller: _controllers[0],
+                  ),
+                ),
                 const SizedBox(width: 10),
-                // Second Column (Vertical Boxes)
+                // Cameras 2 & 3
                 Expanded(
                   flex: 1,
                   child: Column(
                     children: [
-                      Expanded(child: _CameraContainer(cameraNumber: 2)),
+                      Expanded(
+                        child: _CameraContainer(
+                          cameraNumber: 1,
+                          controller: _controllers[1],
+                        ),
+                      ),
                       const SizedBox(height: 10),
-                      Expanded(child: _CameraContainer(cameraNumber: 3)),
+                      Expanded(
+                        child: _CameraContainer(
+                          cameraNumber: 2,
+                          controller: _controllers[2],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -32,16 +89,16 @@ class CameraGrid extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          // Second Row (Horizontal Boxes)
+          // Second Row (Cameras 4-6 as placeholders)
           Expanded(
             flex: 2,
             child: Row(
               children: [
+                Expanded(child: _CameraContainer(cameraNumber: 3)),
+                const SizedBox(width: 10),
                 Expanded(child: _CameraContainer(cameraNumber: 4)),
                 const SizedBox(width: 10),
                 Expanded(child: _CameraContainer(cameraNumber: 5)),
-                const SizedBox(width: 10),
-                Expanded(child: _CameraContainer(cameraNumber: 6)),
               ],
             ),
           ),
@@ -51,10 +108,25 @@ class CameraGrid extends StatelessWidget {
   }
 }
 
-class _CameraContainer extends StatelessWidget {
-  final int cameraNumber;
+class _CameraContainer extends StatefulWidget {
+  final int? cameraNumber;
+  final String? label;
+  final VlcPlayerController? controller;
 
-  const _CameraContainer({required this.cameraNumber});
+  const _CameraContainer({this.cameraNumber, this.label, this.controller});
+
+  @override
+  State<_CameraContainer> createState() => _CameraContainerState();
+}
+
+class _CameraContainerState extends State<_CameraContainer> {
+  late VlcPlayerController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.controller ?? VlcPlayerController.network('');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -73,9 +145,16 @@ class _CameraContainer extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          const Center(
-            child: Icon(Icons.videocam, size: 50, color: Colors.grey),
-          ),
+          if (widget.controller != null)
+            VlcPlayer(
+              controller: _controller,
+              aspectRatio: 16 / 9,
+              placeholder: const Center(child: CircularProgressIndicator()),
+            )
+          else
+            const Center(
+              child: Icon(Icons.videocam_off, size: 50, color: Colors.grey),
+            ),
           Positioned(
             top: 8,
             left: 8,
@@ -86,7 +165,7 @@ class _CameraContainer extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
-                'Camera $cameraNumber',
+                widget.label ?? 'Camera ${widget.cameraNumber}',
                 style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
             ),

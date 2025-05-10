@@ -24,9 +24,7 @@ class _CustomNavigationBarState extends State<CustomNavigationBar> {
   }
 
   void _handleTabSelection(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    setState(() => _selectedIndex = index);
     widget.onTabSelected(index);
   }
 
@@ -36,7 +34,6 @@ class _CustomNavigationBarState extends State<CustomNavigationBar> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         decoration: BoxDecoration(
-          // color: Colors.white,
           boxShadow: [
             BoxShadow(
               color: Colors.grey.withOpacity(0.1),
@@ -48,10 +45,7 @@ class _CustomNavigationBarState extends State<CustomNavigationBar> {
         ),
         child: Row(
           children: [
-            // Left Logo
             Image.asset('assets/logo/logo1.png', height: 30, width: 112),
-
-            // Middle Navigation Options
             Expanded(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -76,9 +70,7 @@ class _CustomNavigationBarState extends State<CustomNavigationBar> {
                 ],
               ),
             ),
-
-            // Right Profile
-            CircleAvatar(
+            const CircleAvatar(
               radius: 20,
               backgroundImage: AssetImage('assets/images/profile.png'),
             ),

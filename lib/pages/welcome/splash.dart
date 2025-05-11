@@ -1,4 +1,4 @@
-import 'package:eboss_ai/pages/home/home.dart';
+import 'package:eboss_ai/pages/auth/login.dart';
 import 'package:flutter/material.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
 
@@ -18,7 +18,7 @@ class _SplashPageState extends State<SplashPage> {
     Future.delayed(const Duration(seconds: 3), () {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const HomePage()),
+        MaterialPageRoute(builder: (context) => const LoginPage()),
       );
     });
   }

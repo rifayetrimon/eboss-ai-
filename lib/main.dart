@@ -8,16 +8,29 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        scaffoldBackgroundColor: const Color.fromARGB(255, 255, 255, 255),
-        // 0xFFE9EEEA
-      ),
+      title: 'Your App Name',
+      // Set global theme configurations
+      theme: ThemeData(scaffoldBackgroundColor: Colors.transparent),
+      // Apply gradient to all routes
+      builder: (context, child) {
+        return Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color.fromARGB(255, 226, 207, 215),
+                Color.fromARGB(255, 200, 214, 231),
+              ],
+            ),
+          ),
+          child: child,
+        );
+      },
       home: const SplashPage(),
     );
   }

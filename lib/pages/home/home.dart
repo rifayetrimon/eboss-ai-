@@ -29,6 +29,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
+      backgroundColor: Colors.transparent,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(70),
         child: CustomNavigationBar(
@@ -36,22 +37,13 @@ class _HomePageState extends State<HomePage> {
           onTabSelected: _handleTabSelected,
         ),
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFE9F4D7), Color(0xFFDFF4F9)],
-          ),
-        ),
-        child: SafeArea(
-          top: true,
-          child: PageView(
-            controller: _pageController,
-            physics: const NeverScrollableScrollPhysics(),
-            onPageChanged: (index) => setState(() => _currentIndex = index),
-            children: const [CameraGrid(), AiPage(), SettingsPage()],
-          ),
+      body: SafeArea(
+        top: true,
+        child: PageView(
+          controller: _pageController,
+          physics: const NeverScrollableScrollPhysics(),
+          onPageChanged: (index) => setState(() => _currentIndex = index),
+          children: const [CameraGrid(), AiPage(), SettingsPage()],
         ),
       ),
     );

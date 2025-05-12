@@ -1,21 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:eboss_ai/pages/home/home.dart';
+import 'package:get/get.dart';
+import 'package:eboss_ai/controllers/login_controller.dart';
 
-class LoginPage extends StatefulWidget {
+class LoginPage extends StatelessWidget {
   const LoginPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
-}
-
-class _LoginPageState extends State<LoginPage> {
-  final _formKey = GlobalKey<FormState>();
-  final _userIdController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _rememberMe = false;
-
-  @override
   Widget build(BuildContext context) {
+    final LoginController controller = Get.put(LoginController());
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       resizeToAvoidBottomInset: true,
@@ -23,7 +16,6 @@ class _LoginPageState extends State<LoginPage> {
         builder: (context, constraints) {
           return Row(
             children: [
-              // Left Column (Icon) - Hidden on keyboard show
               if (constraints.maxWidth > 600)
                 Expanded(
                   child: Column(
@@ -42,8 +34,6 @@ class _LoginPageState extends State<LoginPage> {
                     ],
                   ),
                 ),
-
-              // Right Column (Login Form)
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(40.0),
@@ -58,9 +48,8 @@ class _LoginPageState extends State<LoginPage> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Login Text
-                            Center(
-                              child: const Text(
+                            const Center(
+                              child: Text(
                                 'Log In',
                                 style: TextStyle(
                                   fontSize: 32,
@@ -70,10 +59,8 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             ),
                             const SizedBox(height: 10),
-
-                            // Subtitle
-                            Center(
-                              child: const Text(
+                            const Center(
+                              child: Text(
                                 'Enter user ID and password to continue',
                                 style: TextStyle(
                                   fontSize: 16,
@@ -82,13 +69,10 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             ),
                             const SizedBox(height: 40),
-
-                            // Form Fields
                             Form(
-                              key: _formKey,
+                              key: controller.formKey,
                               child: Column(
                                 children: [
-                                  // User ID Field
                                   Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
@@ -102,7 +86,7 @@ class _LoginPageState extends State<LoginPage> {
                                       ),
                                       const SizedBox(height: 8),
                                       TextFormField(
-                                        controller: _userIdController,
+                                        controller: controller.userIdController,
                                         decoration: InputDecoration(
                                           hintText: 'Enter your user ID',
                                           prefixIcon: const Icon(
@@ -128,8 +112,6 @@ class _LoginPageState extends State<LoginPage> {
                                     ],
                                   ),
                                   const SizedBox(height: 20),
-
-                                  // Password Field
                                   Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
@@ -143,7 +125,8 @@ class _LoginPageState extends State<LoginPage> {
                                       ),
                                       const SizedBox(height: 8),
                                       TextFormField(
-                                        controller: _passwordController,
+                                        controller:
+                                            controller.passwordController,
                                         obscureText: true,
                                         decoration: InputDecoration(
                                           hintText: 'Enter your password',
@@ -170,46 +153,47 @@ class _LoginPageState extends State<LoginPage> {
                                     ],
                                   ),
                                   const SizedBox(height: 20),
-
-                                  // Remember Me Checkbox
-                                  Row(
-                                    children: [
-                                      Checkbox(
-                                        value: _rememberMe,
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _rememberMe = value!;
-                                          });
-                                        },
-                                      ),
-                                      const Text('Remember Me'),
-                                    ],
+                                  Obx(
+                                    () => Row(
+                                      children: [
+                                        Checkbox(
+                                          value: controller.rememberMe.value,
+                                          onChanged: (value) {
+                                            if (value != null) {
+                                              controller.toggleRememberMe(
+                                                value,
+                                              );
+                                            }
+                                          },
+                                        ),
+                                        const Text('Remember Me'),
+                                      ],
+                                    ),
                                   ),
                                   const SizedBox(height: 30),
-
-                                  // Login Button
-                                  SizedBox(
-                                    // width: double.infinity,
-                                    width: 200.0,
-                                    child: ElevatedButton(
-                                      onPressed: _handleLogin,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.blue[800],
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 16,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
+                                  Center(
+                                    child: SizedBox(
+                                      width: 200.0,
+                                      child: ElevatedButton(
+                                        onPressed: controller.handleLogin,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.blue[800],
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 16,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      child: const Text(
-                                        'LOGIN',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
+                                        child: const Text(
+                                          'LOGIN',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -229,21 +213,5 @@ class _LoginPageState extends State<LoginPage> {
         },
       ),
     );
-  }
-
-  void _handleLogin() {
-    if (_formKey.currentState!.validate()) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomePage()),
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _userIdController.dispose();
-    _passwordController.dispose();
-    super.dispose();
   }
 }

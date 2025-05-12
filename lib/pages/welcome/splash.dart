@@ -1,30 +1,29 @@
-import 'package:eboss_ai/pages/auth/login.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
+import '../auth/login.dart';
 
-class SplashPage extends StatefulWidget {
+class SplashController extends GetxController {
+  @override
+  void onInit() {
+    super.onInit();
+    navigateToLogin();
+  }
+
+  void navigateToLogin() {
+    Future.delayed(const Duration(seconds: 3), () {
+      Get.offAll(() => const LoginPage());
+    });
+  }
+}
+
+class SplashPage extends StatelessWidget {
   const SplashPage({Key? key}) : super(key: key);
 
   @override
-  State<SplashPage> createState() => _SplashPageState();
-}
-
-class _SplashPageState extends State<SplashPage> {
-  @override
-  void initState() {
-    super.initState();
-
-    // Corrected duration to 3 seconds (3000 milliseconds)
-    Future.delayed(const Duration(seconds: 3), () {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginPage()),
-      );
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final controller = Get.put(SplashController());
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Container(
@@ -38,27 +37,21 @@ class _SplashPageState extends State<SplashPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Add vertical space at the top
             const Expanded(child: SizedBox.shrink()),
-
-            // Logo in the center
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Image.asset(
-                    'assets/logo/logo.png', // Replace with your actual logo path
+                    'assets/logo/logo.png',
                     height: 150,
                     width: 150,
                     fit: BoxFit.contain,
                   ),
-
                   const SizedBox(height: 80),
                 ],
               ),
             ),
-
-            // Loader at the bottom
             Padding(
               padding: const EdgeInsets.only(bottom: 150),
               child: Column(

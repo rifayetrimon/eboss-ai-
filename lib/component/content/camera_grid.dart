@@ -1,56 +1,23 @@
+// lib/component/content/camera_grid.dart
+import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_vlc_player/flutter_vlc_player.dart';
+import 'package:eboss_ai/controllers/camera_grid_controller.dart';
 
-class CameraGrid extends StatefulWidget {
+class CameraGrid extends StatelessWidget {
   const CameraGrid({super.key});
 
   @override
-  State<CameraGrid> createState() => _CameraGridState();
-}
-
-class _CameraGridState extends State<CameraGrid> {
-  final List<String> cameraUrls = [
-    'rtsp://admin:JZRGJS@192.168.0.104:554/h264/ch01/sub/av_stream',
-    'rtsp://admin:Reolink%40usj1%2Fa@192.168.0.5:554/Preview_01_sub',
-    'rtsp://admin:DKIONN@192.168.0.224:554/h264/ch01/sub/av_stream',
-  ];
-
-  final Map<int, VlcPlayerController> _controllers = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeControllers();
-  }
-
-  void _initializeControllers() {
-    for (int i = 0; i < cameraUrls.length; i++) {
-      _controllers[i] = VlcPlayerController.network(
-        cameraUrls[i],
-        options: VlcPlayerOptions(
-          advanced: VlcAdvancedOptions([
-            VlcAdvancedOptions.networkCaching(2000),
-          ]),
-        ),
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    for (var controller in _controllers.values) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    // Don't initialize the controller in build - it should be initialized in bindings
+    final CameraGridController controller = Get.find<CameraGridController>();
+
+    // Loading indicator
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          // First Row
+          // Main Camera Row
           Expanded(
             flex: 3,
             child: Row(
@@ -58,28 +25,47 @@ class _CameraGridState extends State<CameraGrid> {
                 // Main Camera
                 Expanded(
                   flex: 2,
-                  child: _CameraContainer(
-                    label: "Main Camera",
-                    controller: _controllers[0],
+                  child: Obx(
+                    () => _CameraContainer(
+                      label: "Main Camera",
+                      cameraNumber: 0,
+                      controller:
+                          controller.isLoading.value
+                              ? null
+                              : (controller.controllers[0]),
+                      onRetry: () => controller.retryConnection(0),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
-                // Cameras 2 & 3
+                // Secondary Cameras Column
                 Expanded(
                   flex: 1,
                   child: Column(
                     children: [
                       Expanded(
-                        child: _CameraContainer(
-                          cameraNumber: 1,
-                          controller: _controllers[1],
+                        child: Obx(
+                          () => _CameraContainer(
+                            cameraNumber: 1,
+                            controller:
+                                controller.isLoading.value
+                                    ? null
+                                    : (controller.controllers[1]),
+                            onRetry: () => controller.retryConnection(1),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 10),
                       Expanded(
-                        child: _CameraContainer(
-                          cameraNumber: 2,
-                          controller: _controllers[2],
+                        child: Obx(
+                          () => _CameraContainer(
+                            cameraNumber: 2,
+                            controller:
+                                controller.isLoading.value
+                                    ? null
+                                    : (controller.controllers[2]),
+                            onRetry: () => controller.retryConnection(2),
+                          ),
                         ),
                       ),
                     ],
@@ -89,16 +75,16 @@ class _CameraGridState extends State<CameraGrid> {
             ),
           ),
           const SizedBox(height: 10),
-          // Second Row (Cameras 4-6 as placeholders)
+          // Additional Cameras Row
           Expanded(
             flex: 2,
             child: Row(
               children: [
-                Expanded(child: _CameraContainer(cameraNumber: 3)),
+                Expanded(child: _EmptyCameraPlaceholder(cameraNumber: 3)),
                 const SizedBox(width: 10),
-                Expanded(child: _CameraContainer(cameraNumber: 4)),
+                Expanded(child: _EmptyCameraPlaceholder(cameraNumber: 4)),
                 const SizedBox(width: 10),
-                Expanded(child: _CameraContainer(cameraNumber: 5)),
+                Expanded(child: _EmptyCameraPlaceholder(cameraNumber: 5)),
               ],
             ),
           ),
@@ -108,25 +94,18 @@ class _CameraGridState extends State<CameraGrid> {
   }
 }
 
-class _CameraContainer extends StatefulWidget {
+class _CameraContainer extends StatelessWidget {
   final int? cameraNumber;
   final String? label;
   final VlcPlayerController? controller;
+  final VoidCallback? onRetry;
 
-  const _CameraContainer({this.cameraNumber, this.label, this.controller});
-
-  @override
-  State<_CameraContainer> createState() => _CameraContainerState();
-}
-
-class _CameraContainerState extends State<_CameraContainer> {
-  late VlcPlayerController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = widget.controller ?? VlcPlayerController.network('');
-  }
+  const _CameraContainer({
+    this.cameraNumber,
+    this.label,
+    this.controller,
+    this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -145,15 +124,38 @@ class _CameraContainerState extends State<_CameraContainer> {
       ),
       child: Stack(
         children: [
-          if (widget.controller != null)
-            VlcPlayer(
-              controller: _controller,
-              aspectRatio: 16 / 9,
-              placeholder: const Center(child: CircularProgressIndicator()),
+          if (controller != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: VlcPlayer(
+                controller: controller!,
+                aspectRatio: 16 / 9,
+                placeholder: const Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                  ),
+                ),
+              ),
             )
           else
-            const Center(
-              child: Icon(Icons.videocam_off, size: 50, color: Colors.grey),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.videocam_off, size: 50, color: Colors.grey),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "Camera Offline",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  if (onRetry != null)
+                    TextButton.icon(
+                      onPressed: onRetry,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text("Retry"),
+                    ),
+                ],
+              ),
             ),
           Positioned(
             top: 8,
@@ -165,12 +167,47 @@ class _CameraContainerState extends State<_CameraContainer> {
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
-                widget.label ?? 'Camera ${widget.cameraNumber}',
-                style: const TextStyle(color: Colors.white, fontSize: 12),
+                label ??
+                    'Camera ${cameraNumber != null ? cameraNumber! + 1 : ""}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _EmptyCameraPlaceholder extends StatelessWidget {
+  final int cameraNumber;
+
+  const _EmptyCameraPlaceholder({required this.cameraNumber});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.withOpacity(0.2), width: 1),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.add_circle_outline, size: 40, color: Colors.grey),
+            const SizedBox(height: 8),
+            Text(
+              "Add Camera ${cameraNumber + 1}",
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
       ),
     );
   }

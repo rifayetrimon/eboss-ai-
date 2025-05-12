@@ -26,8 +26,20 @@ class _LoginPageState extends State<LoginPage> {
               // Left Column (Icon) - Hidden on keyboard show
               if (constraints.maxWidth > 600)
                 Expanded(
-                  child: Center(
-                    child: Image.asset('assets/logo/logo1.png', height: 150),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Image.asset('assets/logo/logo.png', height: 120),
+                      const Text(
+                        'Enhancing your safety through cutting-edge surveillance',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
 
@@ -177,7 +189,8 @@ class _LoginPageState extends State<LoginPage> {
 
                                   // Login Button
                                   SizedBox(
-                                    width: double.infinity,
+                                    // width: double.infinity,
+                                    width: 200.0,
                                     child: ElevatedButton(
                                       onPressed: _handleLogin,
                                       style: ElevatedButton.styleFrom(

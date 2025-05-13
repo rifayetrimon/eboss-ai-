@@ -1,6 +1,6 @@
-// lib/controllers/camera_grid_controller.dart
 import 'package:get/get.dart';
 import 'package:flutter_vlc_player/flutter_vlc_player.dart';
+import 'dart:developer' as developer;
 
 class CameraGridController extends GetxController {
   final List<String> cameraUrls = [
@@ -13,6 +13,7 @@ class CameraGridController extends GetxController {
       <int, VlcPlayerController?>{}.obs;
   final RxBool isLoading = true.obs;
   final RxList<int> failedCameras = <int>[].obs;
+  final RxList<String> errorMessages = <String>[].obs;
 
   @override
   void onInit() {
@@ -22,71 +23,76 @@ class CameraGridController extends GetxController {
 
   Future<void> _initializeControllers() async {
     try {
-      // Initialize with null values first so the map has all keys
-      for (int i = 0; i < cameraUrls.length; i++) {
-        controllers[i] = null;
-      }
-
-      // Now try to create controllers
-      for (int i = 0; i < cameraUrls.length; i++) {
-        try {
-          final controller = VlcPlayerController.network(
-            cameraUrls[i],
-            options: VlcPlayerOptions(
-              advanced: VlcAdvancedOptions([
-                VlcAdvancedOptions.networkCaching(2000),
-              ]),
-            ),
-          );
-
-          // Update the controller in the map
-          controllers[i] = controller;
-        } catch (e) {
-          failedCameras.add(i);
-          print('Failed to initialize camera $i: $e');
+      // Dispose old controllers safely
+      for (var controller in controllers.values) {
+        if (controller != null) {
+          try {
+            controller.dispose();
+          } catch (e) {
+            developer.log('Error disposing controller: $e');
+          }
         }
       }
+      controllers.clear();
+      failedCameras.clear();
+      errorMessages.clear();
+
+      for (int i = 0; i < cameraUrls.length; i++) {
+        controllers[i] = VlcPlayerController.network(
+          cameraUrls[i],
+          hwAcc: HwAcc.full,
+          autoPlay: true, // <-- THIS IS THE KEY
+          options: VlcPlayerOptions(
+            advanced: VlcAdvancedOptions([
+              VlcAdvancedOptions.networkCaching(2000),
+              '--rtsp-tcp',
+              '--no-drop-late-frames',
+              '--no-skip-frames',
+              '--live-caching=300',
+            ]),
+          ),
+        );
+      }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to initialize camera connections');
+      developer.log('General error creating camera controllers: $e', error: e);
+      Get.snackbar('Error', 'Failed to create camera controllers: $e');
     } finally {
       isLoading.value = false;
     }
   }
 
-  bool isCameraAvailable(int index) {
-    return controllers.containsKey(index) &&
-        controllers[index] != null &&
-        !failedCameras.contains(index);
-  }
-
   void retryConnection(int index) {
     if (index < cameraUrls.length) {
+      developer.log('Retrying connection for camera $index');
       if (failedCameras.contains(index)) {
         failedCameras.remove(index);
       }
+      errorMessages.removeWhere((msg) => msg.contains('Camera ${index + 1}:'));
 
-      try {
-        // Dispose old controller if exists
-        if (controllers[index] != null) {
+      // Dispose old controller safely
+      if (controllers[index] != null) {
+        try {
           controllers[index]!.dispose();
+        } catch (e) {
+          developer.log('Error disposing controller: $e');
         }
-
-        // Create new controller
-        final controller = VlcPlayerController.network(
-          cameraUrls[index],
-          options: VlcPlayerOptions(
-            advanced: VlcAdvancedOptions([
-              VlcAdvancedOptions.networkCaching(2000),
-            ]),
-          ),
-        );
-
-        // Update the map
-        controllers[index] = controller;
-      } catch (e) {
-        failedCameras.add(index);
-        Get.snackbar('Error', 'Failed to reconnect to camera ${index + 1}');
       }
+
+      // Recreate controller
+      controllers[index] = VlcPlayerController.network(
+        cameraUrls[index],
+        hwAcc: HwAcc.full,
+        autoPlay: true, // <-- THIS IS THE KEY
+        options: VlcPlayerOptions(
+          advanced: VlcAdvancedOptions([
+            VlcAdvancedOptions.networkCaching(2000),
+            '--rtsp-tcp',
+            '--no-drop-late-frames',
+            '--no-skip-frames',
+            '--live-caching=300',
+          ]),
+        ),
+      );
     }
   }
 
@@ -94,7 +100,11 @@ class CameraGridController extends GetxController {
   void onClose() {
     for (var controller in controllers.values) {
       if (controller != null) {
-        controller.dispose();
+        try {
+          controller.dispose();
+        } catch (e) {
+          developer.log('Error disposing controller: $e');
+        }
       }
     }
     super.onClose();

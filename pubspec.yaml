@@ -18,7 +18,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   
   get: ^4.6.5
-  flutter_vlc_player: ^7.2.0
+  flutter_vlc_player: ^7.4.0
   loading_animation_widget: ^1.2.0+4
   flutter_secure_storage: ^8.0.0
 
@@ -45,6 +45,7 @@ flutter:
     - assets/
     - assets/images/
     - assets/logo/
+    - assets/icons/
 
 # ---------- Launcher Icon Configuration ----------
 # NOTE: This must be at the same indentation level as "flutter"

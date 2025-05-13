@@ -35,7 +35,7 @@ class MyApp extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFFE7D7DE), Color(0xFFCBD8E8)],
+              colors: [Color(0xFFEAD0DB), Color(0xFFB6CEEB)],
             ),
           ),
           child: child,

@@ -4,9 +4,9 @@ import 'dart:developer' as developer;
 
 class CameraGridController extends GetxController {
   final List<String> cameraUrls = [
-    'rtsp://admin:JZRGJS@192.168.0.104:554/h264/ch01/sub/av_stream',
-    'rtsp://admin:Reolink%40usj1%2Fa@192.168.0.5:554/Preview_01_sub',
-    'rtsp://admin:DKIONN@192.168.0.224:554/h264/ch01/sub/av_stream',
+    // 'rtsp://admin:JZRGJS@192.168.0.104:554/h264/ch01/sub/av_stream',
+    // 'rtsp://admin:Reolink%40usj1%2Fa@192.168.0.5:554/Preview_01_sub',
+    // 'rtsp://admin:DKIONN@192.168.0.224:554/h264/ch01/sub/av_stream',
   ];
 
   final RxMap<int, VlcPlayerController?> controllers =

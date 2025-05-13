@@ -26,7 +26,7 @@ class CustomNavigationBar extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             decoration: BoxDecoration(
-              color: const Color.fromARGB(60, 255, 255, 255),
+              color: Colors.white.withOpacity(0.2),
               boxShadow: [
                 BoxShadow(
                   color: Colors.grey.withOpacity(0.1),

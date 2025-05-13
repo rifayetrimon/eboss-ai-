@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_vlc_player/flutter_vlc_player.dart';
 
 class CameraGrid extends StatefulWidget {
@@ -15,21 +16,182 @@ class CameraGrid extends StatefulWidget {
 }
 
 class _CameraGridState extends State<CameraGrid> {
-  final ValueNotifier<int> streamAllNotifier = ValueNotifier<int>(0);
+  int? fullscreenCamera; // null = grid, otherwise index of camera
+  late List<VlcPlayerController> _controllers;
+  late List<bool> _isPlayingList;
+
+  // Track if a controller needs initialization
+  late List<bool> _needsInitialization;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeControllers();
+  }
+
+  void _initializeControllers() {
+    _controllers = List.generate(
+      CameraGrid.cameraUrls.length,
+      (i) => VlcPlayerController.network(
+        CameraGrid.cameraUrls[i],
+        hwAcc: HwAcc.full,
+        autoPlay: false,
+        options: VlcPlayerOptions(advanced: VlcAdvancedOptions(['--rtsp-tcp'])),
+      ),
+    );
+    _isPlayingList = List.generate(CameraGrid.cameraUrls.length, (_) => false);
+    _needsInitialization = List.generate(
+      CameraGrid.cameraUrls.length,
+      (_) => false,
+    );
+  }
+
+  @override
+  void dispose() {
+    for (final c in _controllers) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  // Create a new controller for a specific camera
+  VlcPlayerController _createController(int index, {bool autoPlay = false}) {
+    return VlcPlayerController.network(
+      CameraGrid.cameraUrls[index],
+      hwAcc: HwAcc.full,
+      autoPlay: autoPlay,
+      options: VlcPlayerOptions(advanced: VlcAdvancedOptions(['--rtsp-tcp'])),
+    );
+  }
 
   void _streamAll() {
-    streamAllNotifier.value++;
+    setState(() {
+      for (int i = 0; i < _isPlayingList.length; i++) {
+        // If controller needs initialization, recreate it
+        if (_needsInitialization[i]) {
+          _controllers[i].dispose();
+          _controllers[i] = _createController(i, autoPlay: true);
+          _needsInitialization[i] = false;
+        } else {
+          _controllers[i].play();
+        }
+        _isPlayingList[i] = true;
+      }
+    });
+  }
+
+  void _enterFullscreen(int cameraIndex) {
+    // Pause all other streams to save bandwidth
+    for (int i = 0; i < _controllers.length; i++) {
+      if (i != cameraIndex && _isPlayingList[i]) {
+        _controllers[i].pause();
+        // Mark that this controller will need reinitialization
+        _needsInitialization[i] = true;
+      }
+    }
+
+    // Recreate the controller for fullscreen
+    _controllers[cameraIndex].dispose();
+    _controllers[cameraIndex] = _createController(cameraIndex, autoPlay: true);
+    _needsInitialization[cameraIndex] = false;
+
+    // Hide system UI for true fullscreen
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    setState(() {
+      fullscreenCamera = cameraIndex;
+      _isPlayingList[cameraIndex] = true;
+    });
+  }
+
+  void _exitFullscreen() {
+    final idx = fullscreenCamera!;
+
+    // Restore system UI
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+    // Recreate controller to ensure it works in grid view
+    _controllers[idx].dispose();
+    _controllers[idx] = _createController(idx, autoPlay: true);
+    _needsInitialization[idx] = false;
+
+    setState(() {
+      fullscreenCamera = null;
+      _isPlayingList[idx] = true; // Keep it playing
+    });
+  }
+
+  void _setPlaying(int cameraIndex, bool playing) {
+    setState(() {
+      if (playing && _needsInitialization[cameraIndex]) {
+        // Recreate controller if needed
+        _controllers[cameraIndex].dispose();
+        _controllers[cameraIndex] = _createController(
+          cameraIndex,
+          autoPlay: true,
+        );
+        _needsInitialization[cameraIndex] = false;
+        _isPlayingList[cameraIndex] = true;
+      } else {
+        _isPlayingList[cameraIndex] = playing;
+        if (playing) {
+          _controllers[cameraIndex].play();
+        } else {
+          _controllers[cameraIndex].pause();
+        }
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (fullscreenCamera != null) {
+      final idx = fullscreenCamera!;
+      return Stack(
+        children: [
+          Container(
+            color: Colors.black,
+            child: SafeArea(
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio:
+                      MediaQuery.of(context).size.width /
+                      MediaQuery.of(context).size.height,
+                  child: _CameraContainer(
+                    key: ValueKey('fullscreen_$idx'),
+                    cameraNumber: idx,
+                    label: idx == 0 ? "Main Camera" : "Camera $idx",
+                    controller: _controllers[idx],
+                    isPlaying: _isPlayingList[idx],
+                    onPlayPause: (playing) => _setPlaying(idx, playing),
+                    showFullscreen: false,
+                    isFullscreen: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 24,
+            right: 24,
+            child: FloatingActionButton(
+              heroTag: "exit_fullscreen",
+              backgroundColor: Colors.white.withOpacity(0.7),
+              onPressed: _exitFullscreen,
+              child: const Icon(Icons.fullscreen_exit, color: Colors.black),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Normal grid view
     return Stack(
       children: [
         Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              // Main Camera Row
               Expanded(
                 flex: 6,
                 child: Row(
@@ -38,10 +200,13 @@ class _CameraGridState extends State<CameraGrid> {
                     Expanded(
                       flex: 4,
                       child: _CameraContainer(
-                        label: "Main Camera",
                         cameraNumber: 0,
-                        url: CameraGrid.cameraUrls[0],
-                        streamAllNotifier: streamAllNotifier,
+                        label: "Main Camera",
+                        controller: _controllers[0],
+                        isPlaying: _isPlayingList[0],
+                        onPlayPause: (playing) => _setPlaying(0, playing),
+                        onFullscreen: () => _enterFullscreen(0),
+                        needsInit: _needsInitialization[0],
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -54,11 +219,11 @@ class _CameraGridState extends State<CameraGrid> {
                             child: _CameraContainer(
                               cameraNumber: 1,
                               label: "Camera 1",
-                              url:
-                                  CameraGrid.cameraUrls.length > 1
-                                      ? CameraGrid.cameraUrls[1]
-                                      : '',
-                              streamAllNotifier: streamAllNotifier,
+                              controller: _controllers[1],
+                              isPlaying: _isPlayingList[1],
+                              onPlayPause: (playing) => _setPlaying(1, playing),
+                              onFullscreen: () => _enterFullscreen(1),
+                              needsInit: _needsInitialization[1],
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -66,11 +231,11 @@ class _CameraGridState extends State<CameraGrid> {
                             child: _CameraContainer(
                               cameraNumber: 2,
                               label: "Camera 2",
-                              url:
-                                  CameraGrid.cameraUrls.length > 2
-                                      ? CameraGrid.cameraUrls[2]
-                                      : '',
-                              streamAllNotifier: streamAllNotifier,
+                              controller: _controllers[2],
+                              isPlaying: _isPlayingList[2],
+                              onPlayPause: (playing) => _setPlaying(2, playing),
+                              onFullscreen: () => _enterFullscreen(2),
+                              needsInit: _needsInitialization[2],
                             ),
                           ),
                         ],
@@ -96,11 +261,11 @@ class _CameraGridState extends State<CameraGrid> {
             ],
           ),
         ),
-        // Stream All Button
         Positioned(
           bottom: 24,
           right: 24,
           child: FloatingActionButton.extended(
+            heroTag: "stream_all",
             onPressed: _streamAll,
             backgroundColor: Colors.white.withOpacity(0.5),
             elevation: 2,
@@ -133,21 +298,29 @@ class _CameraGridState extends State<CameraGrid> {
 class _CameraContainer extends StatelessWidget {
   final int cameraNumber;
   final String label;
-  final String url;
-  final ValueNotifier<int> streamAllNotifier;
+  final VlcPlayerController controller;
+  final bool isPlaying;
+  final ValueChanged<bool> onPlayPause;
+  final VoidCallback? onFullscreen;
+  final bool showFullscreen;
+  final bool isFullscreen;
+  final bool needsInit;
 
   const _CameraContainer({
+    Key? key,
     required this.cameraNumber,
     required this.label,
-    required this.url,
-    required this.streamAllNotifier,
-  });
+    required this.controller,
+    required this.isPlaying,
+    required this.onPlayPause,
+    this.onFullscreen,
+    this.showFullscreen = true,
+    this.isFullscreen = false,
+    this.needsInit = false,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    if (url.isEmpty) {
-      return _EmptyCameraPlaceholder(cameraNumber: cameraNumber);
-    }
     return Container(
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.1),
@@ -163,8 +336,14 @@ class _CameraContainer extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          CameraStreamWidget(url: url, streamAllNotifier: streamAllNotifier),
-          // Camera label
+          CameraStreamWidget(
+            controller: controller,
+            isPlaying: isPlaying,
+            onPlayPause: onPlayPause,
+            isFullscreen: isFullscreen,
+            cameraNumber: cameraNumber,
+            needsInit: needsInit,
+          ),
           Positioned(
             top: 8,
             left: 8,
@@ -184,7 +363,6 @@ class _CameraContainer extends StatelessWidget {
               ),
             ),
           ),
-          // Camera status indicator
           Positioned(
             top: 8,
             right: 8,
@@ -192,143 +370,83 @@ class _CameraContainer extends StatelessWidget {
               width: 10,
               height: 10,
               decoration: BoxDecoration(
-                color: Colors.green,
+                color:
+                    needsInit
+                        ? Colors.orange
+                        : (isPlaying ? Colors.green : Colors.red),
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 1),
               ),
             ),
           ),
+          // Only show fullscreen button if stream is playing
+          if (showFullscreen && onFullscreen != null && isPlaying)
+            Positioned(
+              bottom: 8,
+              right: 8,
+              child: GestureDetector(
+                onTap: onFullscreen,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.7),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.fullscreen,
+                    color: Colors.black,
+                    size: 24,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-class CameraStreamWidget extends StatefulWidget {
-  final String url;
-  final ValueNotifier<int> streamAllNotifier;
+class CameraStreamWidget extends StatelessWidget {
+  final VlcPlayerController controller;
+  final bool isPlaying;
+  final ValueChanged<bool> onPlayPause;
+  final bool isFullscreen;
+  final int cameraNumber;
+  final bool needsInit;
+
   const CameraStreamWidget({
-    required this.url,
-    required this.streamAllNotifier,
+    required this.controller,
+    required this.isPlaying,
+    required this.onPlayPause,
+    this.isFullscreen = false,
+    required this.cameraNumber,
+    this.needsInit = false,
   });
 
   @override
-  State<CameraStreamWidget> createState() => _CameraStreamWidgetState();
-}
-
-class _CameraStreamWidgetState extends State<CameraStreamWidget> {
-  late VlcPlayerController _controller;
-  bool _hasError = false;
-  bool _isPlaying = false; // Start paused
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = VlcPlayerController.network(
-      widget.url,
-      hwAcc: HwAcc.full,
-      autoPlay: false,
-      options: VlcPlayerOptions(
-        advanced: VlcAdvancedOptions([
-          VlcAdvancedOptions.networkCaching(2000),
-          '--rtsp-tcp',
-        ]),
-      ),
-    );
-    _controller.addListener(_onControllerUpdate);
-    widget.streamAllNotifier.addListener(_onStreamAll);
-  }
-
-  @override
-  void dispose() {
-    _controller.removeListener(_onControllerUpdate);
-    widget.streamAllNotifier.removeListener(_onStreamAll);
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _onStreamAll() {
-    if (!_isPlaying) {
-      _resumeStream();
-    }
-  }
-
-  void _onControllerUpdate() {
-    if (!mounted) return;
-    if (_controller.value.hasError && !_hasError) {
-      setState(() {
-        _hasError = true;
-      });
-    }
-  }
-
-  void _resumeStream() async {
-    setState(() {
-      _isPlaying = true;
-      _hasError = false;
-    });
-    await _controller.play();
-  }
-
-  void _pauseStream() async {
-    setState(() {
-      _isPlaying = false;
-    });
-    await _controller.pause();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (_hasError) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error, color: Colors.red, size: 40),
-            const SizedBox(height: 8),
-            const Text("Stream Error", style: TextStyle(color: Colors.red)),
-            const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _hasError = false;
-                  _isPlaying = false;
-                });
-              },
-              child: const Text("Retry"),
-            ),
-          ],
-        ),
-      );
-    }
-
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Stack(
         children: [
-          // Always build the player, just pause/play as needed
-          Positioned.fill(
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: 1280,
-                height: 720,
-                child: VlcPlayer(
-                  controller: _controller,
-                  aspectRatio: 16 / 9,
-                  placeholder: const Center(child: CircularProgressIndicator()),
-                ),
+          AspectRatio(
+            aspectRatio: 16 / 9,
+            child: VlcPlayer(
+              key: ValueKey(
+                'vlc_player_${isFullscreen ? 'fullscreen_' : ''}$cameraNumber',
               ),
+              controller: controller,
+              aspectRatio: 16 / 9,
+              placeholder: const Center(child: CircularProgressIndicator()),
             ),
           ),
-          // Play overlay (when not playing)
-          if (!_isPlaying)
+          if (!isPlaying || needsInit)
             Positioned.fill(
               child: Container(
                 color: Colors.white.withOpacity(0.5),
                 child: Center(
                   child: GestureDetector(
-                    onTap: _resumeStream,
+                    onTap: () => onPlayPause(true),
                     child: Container(
                       width: 56,
                       height: 56,
@@ -336,9 +454,9 @@ class _CameraStreamWidgetState extends State<CameraStreamWidget> {
                         color: Colors.white.withOpacity(0.8),
                         shape: BoxShape.circle,
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Icon(
-                          Icons.play_arrow,
+                          needsInit ? Icons.refresh : Icons.play_arrow,
                           color: Colors.black,
                           size: 36,
                         ),
@@ -348,13 +466,12 @@ class _CameraStreamWidgetState extends State<CameraStreamWidget> {
                 ),
               ),
             ),
-          // Pause button (top-right, only when playing)
-          if (_isPlaying)
+          if (isPlaying && !needsInit)
             Positioned(
               top: 12,
               right: 12,
               child: GestureDetector(
-                onTap: _pauseStream,
+                onTap: () => onPlayPause(false),
                 child: Container(
                   width: 40,
                   height: 40,

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:loading_animation_widget/loading_animation_widget.dart';
-import '../auth/login.dart';
+import 'package:eboss_ai/pages/auth/login.dart';
 
 class SplashController extends GetxController {
   @override
@@ -31,7 +31,7 @@ class SplashPage extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFFE9F4D7), Color(0xFFDFF4F9)],
+            colors: [Color(0xFFEAD0DB), Color(0xFFB6CEEB)],
           ),
         ),
         child: Column(

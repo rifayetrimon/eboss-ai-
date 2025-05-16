@@ -22,7 +22,7 @@ class CustomNavigationBar extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.2),
+          color: Colors.white.withOpacity(0.3),
           boxShadow: [
             BoxShadow(
               color: Colors.grey.withOpacity(0.1),
@@ -34,7 +34,6 @@ class CustomNavigationBar extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Make the logo clickable
             GestureDetector(
               onTap: () => homeController.handleTabSelected(0),
               child: Image.asset(

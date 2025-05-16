@@ -23,7 +23,7 @@ class LoginPage extends StatelessWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         image: DecorationImage(
-                          image: AssetImage('assets/images/bg_1.png'),
+                          image: AssetImage('assets/images/bg.png'),
                           fit: BoxFit.cover,
                         ),
                       ),
@@ -198,6 +198,10 @@ class LoginPage extends StatelessWidget {
                                               );
                                             }
                                           },
+                                          activeColor:
+                                              Colors
+                                                  .black, // This makes the box black when checked
+                                          checkColor: Colors.white,
                                         ),
                                         const Text('Remember Me'),
                                       ],

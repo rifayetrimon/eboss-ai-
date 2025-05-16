@@ -1,7 +1,7 @@
 // lib/controllers/profile_controller.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:eboss_ai/controllers/auth_controller.dart';
+import 'package:eboss_ai/pages/auth/controllers/auth_controller.dart';
 
 class ProfileController extends GetxController
     with GetSingleTickerProviderStateMixin {

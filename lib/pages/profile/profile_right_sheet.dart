@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:eboss_ai/controllers/profile_controller.dart';
+import 'package:eboss_ai/pages/profile/controller/profile_controller.dart';
 
 class ProfileRightSheet extends StatelessWidget {
   final String userName;

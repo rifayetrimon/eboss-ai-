@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:eboss_ai/controllers/login_controller.dart';
+import 'package:eboss_ai/pages/auth/controllers/login_controller.dart';
 
 class LoginPage extends StatelessWidget {
   const LoginPage({super.key});

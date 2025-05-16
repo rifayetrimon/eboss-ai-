@@ -1,6 +1,6 @@
 import 'package:eboss_ai/bindings/app_bindings.dart';
-import 'package:eboss_ai/bindings/home_binding.dart';
-import 'package:eboss_ai/bindings/login_binding.dart';
+import 'package:eboss_ai/pages/home/bindings/home_binding.dart';
+import 'package:eboss_ai/pages/auth/bindings/login_binding.dart';
 import 'package:eboss_ai/pages/auth/login.dart';
 import 'package:eboss_ai/pages/home/home.dart';
 import 'package:eboss_ai/pages/welcome/splash.dart';

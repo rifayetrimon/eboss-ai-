@@ -1,8 +1,8 @@
 // lib/bindings/home_binding.dart
 import 'package:get/get.dart';
-import '../controllers/home_controller.dart';
-import '../controllers/profile_controller.dart';
-import '../controllers/camera_grid_controller.dart';
+import '../controller/home_controller.dart';
+import '../../profile/controller/profile_controller.dart';
+import '../controller/camera_grid_controller.dart';
 
 class HomeBinding extends Bindings {
   @override

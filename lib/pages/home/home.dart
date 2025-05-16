@@ -1,11 +1,11 @@
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
-import 'package:eboss_ai/component/navigation.dart';
-import 'package:eboss_ai/component/content/camera_grid.dart';
-import 'package:eboss_ai/component/content/ai.dart';
-import 'package:eboss_ai/component/content/settings.dart';
-import 'package:eboss_ai/component/profile/profile_right_sheet.dart';
-import 'package:eboss_ai/controllers/home_controller.dart';
+import 'package:eboss_ai/pages/navigation/navigation.dart';
+import 'package:eboss_ai/pages/home/component/camera_grid.dart';
+import 'package:eboss_ai/pages/ai/ai.dart';
+import 'package:eboss_ai/pages/settings/settings.dart';
+import 'package:eboss_ai/pages/profile/profile_right_sheet.dart';
+import 'package:eboss_ai/pages/home/controller/home_controller.dart';
 
 class HomePage extends StatelessWidget {
   HomePage({super.key});

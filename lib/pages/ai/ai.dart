@@ -1,166 +1,216 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_vlc_player/flutter_vlc_player.dart';
+import 'package:http/http.dart' as http;
 
-class AiPage extends StatelessWidget {
+class AiPage extends StatefulWidget {
   const AiPage({super.key});
 
   @override
+  State<AiPage> createState() => _AiPageState();
+}
+
+class _AiPageState extends State<AiPage> {
+  final List<String?> cameraUrls = [
+    'rtsp://admin:JZRGJS@192.168.0.104:554/h264/ch01/sub/av_stream',
+    null,
+    'rtsp://admin:DKIONN@192.168.0.224:554/h264/ch01/sub/av_stream',
+    '',
+  ];
+
+  final List<VlcPlayerController?> _controllers = [];
+  final List<bool> _hasError = [];
+
+  // Store prediction results per camera index
+  final List<String> _predictedLabels = [];
+  final List<double> _predictedProbabilities = [];
+
+  // Timer for periodic API calls
+  Timer? _timer;
+
+  // Flag to prevent overlapping API calls
+  bool _isFetching = false;
+
+  // Replace with your actual backend IP and port
+  final String apiUrl = 'http://localhost:8000/predict_from_camera';
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeControllers();
+
+    // Initialize prediction lists with default values
+    for (int i = 0; i < cameraUrls.length; i++) {
+      _predictedLabels.add('');
+      _predictedProbabilities.add(0.0);
+    }
+
+    // Start periodic prediction fetching every 5 seconds
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _fetchPredictionsForAllCameras();
+    });
+  }
+
+  @override
+  void dispose() {
+    for (var controller in _controllers) {
+      controller?.dispose();
+    }
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _initializeControllers() {
+    _controllers.clear();
+    _hasError.clear();
+
+    for (var url in cameraUrls) {
+      if (url != null && url.isNotEmpty) {
+        final controller = VlcPlayerController.network(
+          url,
+          hwAcc: HwAcc.full,
+          autoPlay: true,
+          options: VlcPlayerOptions(
+            advanced: VlcAdvancedOptions([
+              VlcAdvancedOptions.networkCaching(2000),
+              '--rtsp-tcp',
+            ]),
+          ),
+        );
+
+        _controllers.add(controller);
+        _hasError.add(false);
+      } else {
+        _controllers.add(null);
+        _hasError.add(false);
+      }
+    }
+
+    for (int i = 0; i < _controllers.length; i++) {
+      final controller = _controllers[i];
+      if (controller != null) {
+        controller.addListener(() {
+          if (!mounted) return;
+          if (controller.value.hasError && !_hasError[i]) {
+            setState(() {
+              _hasError[i] = true;
+            });
+          }
+        });
+      }
+    }
+
+    setState(() {});
+  }
+
+  Future<void> _fetchPredictionsForAllCameras() async {
+    if (_isFetching) return; // Prevent overlapping calls
+    _isFetching = true;
+
+    for (int i = 0; i < cameraUrls.length; i++) {
+      if (cameraUrls[i] != null && cameraUrls[i]!.isNotEmpty) {
+        try {
+          final response = await http.post(Uri.parse(apiUrl));
+          debugPrint('API response status for camera $i: ${response.statusCode}');
+          debugPrint('API response body for camera $i: ${response.body}');
+          if (response.statusCode == 200) {
+            final data = json.decode(response.body);
+            if (mounted) {
+              setState(() {
+                _predictedLabels[i] = data['predicted_label'] ?? '';
+                _predictedProbabilities[i] =
+                    (data['predicted_probability'] ?? 0.0).toDouble();
+              });
+            }
+          } else {
+            debugPrint('API error for camera $i: ${response.statusCode}');
+          }
+        } catch (e) {
+          debugPrint('Error fetching prediction for camera $i: $e');
+        }
+      }
+    }
+
+    _isFetching = false;
+  }
+
+  Widget _buildCameraView(int index) {
+    final controller = _controllers[index];
+    final hasError = _hasError[index];
+
+    if (controller == null || hasError) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade400),
+        ),
+        child: const Center(
+          child: Text(
+            'Add AI Camera',
+            style: TextStyle(
+              color: Colors.black54,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: VlcPlayer(
+            key: ValueKey(controller.hashCode),
+            controller: controller,
+            aspectRatio: 16 / 9,
+            placeholder: const Center(child: CircularProgressIndicator()),
+            virtualDisplay: true,
+          ),
+        ),
+        // Prediction overlay at bottom left with 20px left padding
+        Positioned(
+          left: 8,
+          bottom: 8,
+          child: Container(
+            padding: const EdgeInsets.only(left: 20, right: 6, top: 4, bottom: 4),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              '${_predictedLabels[index]}${_predictedLabels[index].isNotEmpty ? ' (${(_predictedProbabilities[index] * 100).toStringAsFixed(1)}%)' : ''}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'AI Content',
-        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+    return Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: GridView.builder(
+        itemCount: cameraUrls.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 16 / 9,
+        ),
+        itemBuilder: (context, index) {
+          return _buildCameraView(index);
+        },
       ),
     );
   }
 }
-
-// import 'package:flutter/material.dart';
-// import 'package:flutter_vlc_player/flutter_vlc_player.dart';
-// import 'dart:developer' as developer;
-
-// class AiPage extends StatefulWidget {
-//   const AiPage({super.key});
-
-//   @override
-//   State<AiPage> createState() => _AiPageState();
-// }
-
-// class _AiPageState extends State<AiPage> {
-//   VlcPlayerController? _controller;
-//   bool _isLoading = true;
-//   bool _hasError = false;
-//   String _errorMessage = '';
-
-//   @override
-//   void initState() {
-//     super.initState();
-//     _setupCamera();
-//   }
-
-//   void _setupCamera() {
-//     setState(() {
-//       _isLoading = true;
-//       _hasError = false;
-//       _errorMessage = '';
-//     });
-
-//     try {
-//       developer.log('Attempting to connect to camera...');
-
-//       // Dispose previous controller if any
-//       _controller?.dispose();
-
-//       // Create controller with autoPlay: true
-//       final controller = VlcPlayerController.network(
-//         'rtsp://admin:JZRGJS@192.168.0.104:554/h264/ch01/sub/av_stream',
-//         hwAcc: HwAcc.full,
-//         autoPlay: true, // <-- THIS IS THE KEY
-//         options: VlcPlayerOptions(
-//           advanced: VlcAdvancedOptions([
-//             VlcAdvancedOptions.networkCaching(2000),
-//             '--rtsp-tcp',
-//           ]),
-//         ),
-//       );
-
-//       setState(() {
-//         _controller = controller;
-//         _isLoading = false;
-//       });
-//     } catch (e) {
-//       developer.log('Exception setting up camera: $e');
-//       setState(() {
-//         _isLoading = false;
-//         _hasError = true;
-//         _errorMessage = 'Setup error: $e';
-//       });
-//     }
-//   }
-
-//   @override
-//   void dispose() {
-//     _controller?.dispose();
-//     super.dispose();
-//   }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Center(
-//       child: Column(
-//         mainAxisAlignment: MainAxisAlignment.center,
-//         children: [
-//           const Text(
-//             'Camera Stream',
-//             style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-//           ),
-//           const SizedBox(height: 20),
-//           Expanded(
-//             child: Container(
-//               margin: const EdgeInsets.all(16),
-//               decoration: BoxDecoration(
-//                 border: Border.all(color: Colors.grey),
-//                 borderRadius: BorderRadius.circular(8),
-//               ),
-//               child:
-//                   _isLoading
-//                       ? const Center(
-//                         child: Column(
-//                           mainAxisAlignment: MainAxisAlignment.center,
-//                           children: [
-//                             CircularProgressIndicator(),
-//                             SizedBox(height: 16),
-//                             Text('Connecting to camera...'),
-//                           ],
-//                         ),
-//                       )
-//                       : _hasError
-//                       ? Center(
-//                         child: Column(
-//                           mainAxisAlignment: MainAxisAlignment.center,
-//                           children: [
-//                             const Icon(
-//                               Icons.error,
-//                               color: Colors.red,
-//                               size: 48,
-//                             ),
-//                             const SizedBox(height: 16),
-//                             const Text('Failed to connect to camera'),
-//                             const SizedBox(height: 8),
-//                             Padding(
-//                               padding: const EdgeInsets.all(16.0),
-//                               child: Text(
-//                                 _errorMessage,
-//                                 style: const TextStyle(
-//                                   fontSize: 12,
-//                                   color: Colors.grey,
-//                                 ),
-//                                 textAlign: TextAlign.center,
-//                               ),
-//                             ),
-//                             const SizedBox(height: 16),
-//                             ElevatedButton(
-//                               onPressed: _setupCamera,
-//                               child: const Text('Try Again'),
-//                             ),
-//                           ],
-//                         ),
-//                       )
-//                       : _controller != null
-//                       ? ClipRRect(
-//                         borderRadius: BorderRadius.circular(8),
-//                         child: VlcPlayer(
-//                           controller: _controller!,
-//                           aspectRatio: 16 / 9,
-//                           placeholder: const Center(
-//                             child: CircularProgressIndicator(),
-//                           ),
-//                         ),
-//                       )
-//                       : const Center(child: Text('Controller not initialized')),
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-// }

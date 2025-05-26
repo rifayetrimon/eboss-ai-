@@ -22,30 +22,46 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 220,
-          color: Colors.white.withOpacity(0.3), // White with 0.3 opacity
-          child: ListView.builder(
-            itemCount: settingsItems.length,
-            itemBuilder: (context, index) {
-              final isSelected = index == selectedIndex;
-              return ListTile(
-                title: Text(settingsItems[index]),
-                selected: isSelected,
-                selectedTileColor: Colors.blue[100],
-                onTap: () {
-                  setState(() {
-                    selectedIndex = index;
-                  });
-                },
-              );
-            },
+        // Left column with margin on all sides
+        Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Container(
+            width: 220,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: ListView.builder(
+              itemCount: settingsItems.length,
+              itemBuilder: (context, index) {
+                final isSelected = index == selectedIndex;
+                return ListTile(
+                  title: Text(settingsItems[index]),
+                  selected: isSelected,
+                  selectedTileColor: Colors.blue[100],
+                  onTap: () {
+                    setState(() {
+                      selectedIndex = index;
+                    });
+                  },
+                );
+              },
+            ),
           ),
         ),
+
+        // Right column with margin on all sides
         Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            child: _buildSettingDetails(selectedIndex),
+          child: Padding(
+            padding: const EdgeInsets.all(12.0), // margin on all sides
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.all(24),
+              child: _buildSettingDetails(selectedIndex),
+            ),
           ),
         ),
       ],

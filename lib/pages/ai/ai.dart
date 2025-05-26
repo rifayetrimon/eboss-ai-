@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_vlc_player/flutter_vlc_player.dart';
 import 'package:http/http.dart' as http;
+import 'dart:developer' as developer;
 
 class AiPage extends StatefulWidget {
   const AiPage({super.key});
@@ -11,205 +12,307 @@ class AiPage extends StatefulWidget {
   State<AiPage> createState() => _AiPageState();
 }
 
-class _AiPageState extends State<AiPage> {
+class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   final List<String?> cameraUrls = [
     'rtsp://admin:JZRGJS@192.168.0.104:554/h264/ch01/sub/av_stream',
-    null,
     'rtsp://admin:DKIONN@192.168.0.224:554/h264/ch01/sub/av_stream',
+    '',
     '',
   ];
 
-  final List<VlcPlayerController?> _controllers = [];
-  final List<bool> _hasError = [];
+  late final List<VlcPlayerController?> _controllers;
+  late final List<bool> _isPlayingList;
+  late final List<bool> _hasError;
+  late final List<String> _predictedLabels;
+  late final List<double> _predictedProbabilities;
 
-  // Store prediction results per camera index
-  final List<String> _predictedLabels = [];
-  final List<double> _predictedProbabilities = [];
-
-  // Timer for periodic API calls
   Timer? _timer;
-
-  // Flag to prevent overlapping API calls
   bool _isFetching = false;
 
-  // Replace with your actual backend IP and port
   final String apiUrl = 'http://localhost:8000/predict_from_camera';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initializeState();
     _initializeControllers();
 
-    // Initialize prediction lists with default values
-    for (int i = 0; i < cameraUrls.length; i++) {
-      _predictedLabels.add('');
-      _predictedProbabilities.add(0.0);
-    }
-
-    // Start periodic prediction fetching every 5 seconds
     _timer = Timer.periodic(const Duration(seconds: 5), (_) {
-      _fetchPredictionsForAllCameras();
+      if (mounted) _fetchPredictionsForAllCameras();
     });
+  }
+
+  void _initializeState() {
+    final length = cameraUrls.length;
+    _controllers = List<VlcPlayerController?>.filled(length, null);
+    _isPlayingList = List<bool>.filled(length, false);
+    _hasError = List<bool>.filled(length, false);
+    _predictedLabels = List<String>.filled(length, '');
+    _predictedProbabilities = List<double>.filled(length, 0.0);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.paused) {
+      _pauseAllPlayers();
+    }
+  }
+
+  void _pauseAllPlayers() {
+    for (int i = 0; i < _controllers.length; i++) {
+      final controller = _controllers[i];
+      if (controller != null && _isPlayingList[i]) {
+        try {
+          controller.pause();
+        } catch (e) {
+          developer.log('Error pausing player: $e');
+        }
+      }
+    }
   }
 
   @override
   void dispose() {
+    _timer?.cancel();
     for (var controller in _controllers) {
       controller?.dispose();
     }
-    _timer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   void _initializeControllers() {
-    _controllers.clear();
-    _hasError.clear();
+    for (int i = 0; i < cameraUrls.length; i++) {
+      _createController(i, autoPlay: false);
+    }
+  }
 
-    for (var url in cameraUrls) {
-      if (url != null && url.isNotEmpty) {
-        final controller = VlcPlayerController.network(
-          url,
-          hwAcc: HwAcc.full,
-          autoPlay: true,
-          options: VlcPlayerOptions(
-            advanced: VlcAdvancedOptions([
-              VlcAdvancedOptions.networkCaching(2000),
-              '--rtsp-tcp',
-            ]),
-          ),
-        );
+  void _createController(int index, {bool autoPlay = false}) {
+    if (index >= cameraUrls.length) return;
 
-        _controllers.add(controller);
-        _hasError.add(false);
-      } else {
-        _controllers.add(null);
-        _hasError.add(false);
+    final oldController = _controllers[index];
+    oldController?.dispose();
+
+    final url = cameraUrls[index];
+    if (url == null || url.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _controllers[index] = null;
+          _hasError[index] = true;
+        });
       }
+      return;
     }
 
-    for (int i = 0; i < _controllers.length; i++) {
-      final controller = _controllers[i];
-      if (controller != null) {
-        controller.addListener(() {
-          if (!mounted) return;
-          if (controller.value.hasError && !_hasError[i]) {
-            setState(() {
-              _hasError[i] = true;
-            });
-          }
+    try {
+      final controller = VlcPlayerController.network(
+        url,
+        hwAcc: HwAcc.full,
+        autoPlay: autoPlay,
+        options: VlcPlayerOptions(
+          advanced: VlcAdvancedOptions([
+            '--rtsp-tcp',
+            VlcAdvancedOptions.networkCaching(2000),
+          ]),
+        ),
+      );
+
+      controller.addListener(() {
+        if (!mounted) return;
+        if (controller.value.hasError && !_hasError[index]) {
+          setState(() => _hasError[index] = true);
+        }
+      });
+
+      if (mounted) {
+        setState(() {
+          _controllers[index] = controller;
+          _isPlayingList[index] = autoPlay;
+          _hasError[index] = false;
+        });
+      }
+    } catch (e) {
+      developer.log('Error creating controller: $e');
+      if (mounted) {
+        setState(() {
+          _controllers[index] = null;
+          _hasError[index] = true;
         });
       }
     }
-
-    setState(() {});
   }
 
   Future<void> _fetchPredictionsForAllCameras() async {
-    if (_isFetching) return; // Prevent overlapping calls
+    if (_isFetching || !mounted) return;
     _isFetching = true;
 
-    for (int i = 0; i < cameraUrls.length; i++) {
-      if (cameraUrls[i] != null && cameraUrls[i]!.isNotEmpty) {
-        try {
+    try {
+      for (int i = 0; i < cameraUrls.length; i++) {
+        if (cameraUrls[i]?.isNotEmpty ?? false) {
           final response = await http.post(Uri.parse(apiUrl));
-          debugPrint('API response status for camera $i: ${response.statusCode}');
-          debugPrint('API response body for camera $i: ${response.body}');
-          if (response.statusCode == 200) {
+          if (response.statusCode == 200 && mounted) {
             final data = json.decode(response.body);
-            if (mounted) {
-              setState(() {
-                _predictedLabels[i] = data['predicted_label'] ?? '';
-                _predictedProbabilities[i] =
-                    (data['predicted_probability'] ?? 0.0).toDouble();
-              });
-            }
-          } else {
-            debugPrint('API error for camera $i: ${response.statusCode}');
+            setState(() {
+              _predictedLabels[i] = data['predicted_label']?.toString() ?? '';
+              _predictedProbabilities[i] =
+                  (data['predicted_probability'] as num?)?.toDouble() ?? 0.0;
+            });
           }
-        } catch (e) {
-          debugPrint('Error fetching prediction for camera $i: $e');
         }
       }
+    } catch (e) {
+      developer.log('Error fetching predictions: $e');
+    } finally {
+      _isFetching = false;
     }
-
-    _isFetching = false;
   }
 
-  Widget _buildCameraView(int index) {
+  void _togglePlayPause(int index) {
+    if (index >= _controllers.length || !mounted) return;
+
+    final controller = _controllers[index];
+    if (controller == null) return;
+
+    setState(() {
+      if (_isPlayingList[index]) {
+        controller.pause();
+        _isPlayingList[index] = false;
+      } else {
+        controller.play();
+        _isPlayingList[index] = true;
+      }
+    });
+  }
+
+  Widget _buildCameraTile(int index) {
+    if (index >= cameraUrls.length) return const SizedBox.shrink();
+
     final controller = _controllers[index];
     final hasError = _hasError[index];
+    final isPlaying = _isPlayingList[index];
+    final label = _predictedLabels[index];
+    final probability = _predictedProbabilities[index];
 
-    if (controller == null || hasError) {
-      return Container(
+    final bool hasValidStream = controller != null && !hasError;
+
+    return KeyedSubtree(
+      key: ValueKey('camera_tile_$index'),
+      child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.3),
+          color:
+              hasValidStream
+                  ? Colors.transparent
+                  : Colors.white.withOpacity(0.3),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.grey.shade400),
         ),
-        child: const Center(
-          child: Text(
-            'Add AI Camera',
-            style: TextStyle(
-              color: Colors.black54,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Stack(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: VlcPlayer(
-            key: ValueKey(controller.hashCode),
-            controller: controller,
-            aspectRatio: 16 / 9,
-            placeholder: const Center(child: CircularProgressIndicator()),
-            virtualDisplay: true,
-          ),
-        ),
-        // Prediction overlay at bottom left with 20px left padding
-        Positioned(
-          left: 8,
-          bottom: 8,
-          child: Container(
-            padding: const EdgeInsets.only(left: 20, right: 6, top: 4, bottom: 4),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              '${_predictedLabels[index]}${_predictedLabels[index].isNotEmpty ? ' (${(_predictedProbabilities[index] * 100).toStringAsFixed(1)}%)' : ''}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            if (hasValidStream)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: VlcPlayer(
+                  key: ValueKey('camera_player_$index'),
+                  controller: controller!,
+                  aspectRatio: 16 / 9,
+                  placeholder: const Center(child: CircularProgressIndicator()),
+                  virtualDisplay: false,
+                ),
+              )
+            else
+              const Center(
+                child: Text(
+                  'Add AI Camera',
+                  style: TextStyle(
+                    color: Colors.black54,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
               ),
-            ),
-          ),
+
+            if (hasValidStream)
+              Positioned(
+                left: 8,
+                bottom: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    label.isNotEmpty
+                        ? '${label} (${(probability * 100).toStringAsFixed(1)}%)'
+                        : 'Analyzing...',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+
+            if (hasValidStream && !isPlaying)
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => _togglePlayPause(index),
+                  child: Container(
+                    color: Colors.black45,
+                    child: const Center(
+                      child: Icon(
+                        Icons.play_circle_fill,
+                        size: 48,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+            if (hasValidStream && isPlaying)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.pause_circle_filled,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                  onPressed: () => _togglePlayPause(index),
+                ),
+              ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(12.0),
-      child: GridView.builder(
-        itemCount: cameraUrls.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 16 / 9,
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 16 / 9,
+            ),
+            itemCount: cameraUrls.length,
+            itemBuilder: (context, index) => _buildCameraTile(index),
+          ),
         ),
-        itemBuilder: (context, index) {
-          return _buildCameraView(index);
-        },
       ),
     );
   }

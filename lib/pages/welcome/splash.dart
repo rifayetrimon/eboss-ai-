@@ -12,7 +12,9 @@ class SplashController extends GetxController {
 
   void navigateToLogin() {
     Future.delayed(const Duration(seconds: 3), () {
-      Get.offAll(() => const LoginPage());
+      if (Get.isRegistered<SplashController>()) {
+        Get.offAll(() => const LoginPage());
+      }
     });
   }
 }
@@ -22,7 +24,8 @@ class SplashPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.put(SplashController());
+    // Initialize controller only once
+    Get.put(SplashController(), permanent: true);
 
     return Scaffold(
       backgroundColor: Colors.transparent,

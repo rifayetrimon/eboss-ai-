@@ -1,8 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_vlc_player/flutter_vlc_player.dart';
-import 'package:http/http.dart' as http;
 import 'dart:developer' as developer;
 
 class AiPage extends StatefulWidget {
@@ -12,7 +11,8 @@ class AiPage extends StatefulWidget {
   State<AiPage> createState() => _AiPageState();
 }
 
-class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
+class _AiPageState extends State<AiPage>
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   final List<String?> cameraUrls = [
     'rtsp://admin:JZRGJS@192.168.0.104:554/h264/ch01/sub/av_stream',
     'rtsp://admin:DKIONN@192.168.0.224:554/h264/ch01/sub/av_stream',
@@ -23,13 +23,20 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   late final List<VlcPlayerController?> _controllers;
   late final List<bool> _isPlayingList;
   late final List<bool> _hasError;
-  late final List<String> _predictedLabels;
-  late final List<double> _predictedProbabilities;
 
-  Timer? _timer;
-  bool _isFetching = false;
+  bool _isPaused = false;
 
-  final String apiUrl = 'http://localhost:8000/predict_from_camera';
+  final List<Map<String, String>> _users = [
+    {"name": "Alex", "avatar": "assets/images/profile/user1.png"},
+    {"name": "Jordan", "avatar": "assets/images/profile/user2.png"},
+    {"name": "Malik", "avatar": "assets/images/profile/user3.png"},
+    {"name": "Sam", "avatar": "assets/images/profile/user4.png"},
+    {"name": "Leah", "avatar": "assets/images/profile/user5.png"},
+  ];
+
+  late List<List<_LiveComment>> _activeCommentsPerCamera;
+  late List<int> _commentIndicesPerCamera;
+  late List<Timer?> _commentTimersPerCamera;
 
   @override
   void initState() {
@@ -38,9 +45,16 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     _initializeState();
     _initializeControllers();
 
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (mounted) _fetchPredictionsForAllCameras();
-    });
+    _activeCommentsPerCamera = List.generate(cameraUrls.length, (_) => []);
+    _commentIndicesPerCamera = List.generate(cameraUrls.length, (_) => 0);
+    _commentTimersPerCamera = List.generate(cameraUrls.length, (_) => null);
+
+    // Start comment streams only for cameras that are playing (initially none)
+    for (int i = 0; i < cameraUrls.length; i++) {
+      if ((cameraUrls[i]?.isNotEmpty ?? false) && _isPlayingList[i]) {
+        _startCommentStream(i);
+      }
+    }
   }
 
   void _initializeState() {
@@ -48,8 +62,6 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     _controllers = List<VlcPlayerController?>.filled(length, null);
     _isPlayingList = List<bool>.filled(length, false);
     _hasError = List<bool>.filled(length, false);
-    _predictedLabels = List<String>.filled(length, '');
-    _predictedProbabilities = List<double>.filled(length, 0.0);
   }
 
   @override
@@ -57,6 +69,9 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.paused) {
       _pauseAllPlayers();
+      _pauseComments();
+    } else if (state == AppLifecycleState.resumed) {
+      _resumeComments();
     }
   }
 
@@ -66,6 +81,7 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
       if (controller != null && _isPlayingList[i]) {
         try {
           controller.pause();
+          _isPlayingList[i] = false;
         } catch (e) {
           developer.log('Error pausing player: $e');
         }
@@ -73,11 +89,40 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     }
   }
 
+  void _pauseComments() {
+    _isPaused = true;
+    for (int i = 0; i < _commentTimersPerCamera.length; i++) {
+      _commentTimersPerCamera[i]?.cancel();
+      _commentTimersPerCamera[i] = null;
+      _activeCommentsPerCamera[i].clear();
+    }
+    setState(() {}); // Refresh UI to clear comments
+  }
+
+  void _resumeComments() {
+    if (!_isPaused) return;
+    _isPaused = false;
+    for (int i = 0; i < cameraUrls.length; i++) {
+      if ((cameraUrls[i]?.isNotEmpty ?? false) && _isPlayingList[i]) {
+        if (_commentTimersPerCamera[i] == null) {
+          _startCommentStream(i);
+        }
+      }
+    }
+  }
+
   @override
   void dispose() {
-    _timer?.cancel();
     for (var controller in _controllers) {
       controller?.dispose();
+    }
+    for (var commentList in _activeCommentsPerCamera) {
+      for (var comment in commentList) {
+        comment.controller.dispose();
+      }
+    }
+    for (var timer in _commentTimersPerCamera) {
+      timer?.cancel();
     }
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -144,31 +189,6 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _fetchPredictionsForAllCameras() async {
-    if (_isFetching || !mounted) return;
-    _isFetching = true;
-
-    try {
-      for (int i = 0; i < cameraUrls.length; i++) {
-        if (cameraUrls[i]?.isNotEmpty ?? false) {
-          final response = await http.post(Uri.parse(apiUrl));
-          if (response.statusCode == 200 && mounted) {
-            final data = json.decode(response.body);
-            setState(() {
-              _predictedLabels[i] = data['predicted_label']?.toString() ?? '';
-              _predictedProbabilities[i] =
-                  (data['predicted_probability'] as num?)?.toDouble() ?? 0.0;
-            });
-          }
-        }
-      }
-    } catch (e) {
-      developer.log('Error fetching predictions: $e');
-    } finally {
-      _isFetching = false;
-    }
-  }
-
   void _togglePlayPause(int index) {
     if (index >= _controllers.length || !mounted) return;
 
@@ -179,11 +199,100 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
       if (_isPlayingList[index]) {
         controller.pause();
         _isPlayingList[index] = false;
+        // Stop comment stream and clear comments for this camera
+        _commentTimersPerCamera[index]?.cancel();
+        _commentTimersPerCamera[index] = null;
+        _activeCommentsPerCamera[index].clear();
       } else {
         controller.play();
         _isPlayingList[index] = true;
+        // Start comment stream for this camera
+        if (_commentTimersPerCamera[index] == null) {
+          _startCommentStream(index);
+        }
       }
     });
+  }
+
+  Future<List<String>> _fetchCommentsFromApi(int cameraIndex) async {
+    // TODO: Replace with your real API call to fetch comments for the camera
+    await Future.delayed(const Duration(milliseconds: 500));
+    return [
+      "❤️ Awesome stream!",
+      "🔥 Nice content!",
+      "😍 Loving this!",
+      "💪 Keep it up!",
+      "😊 So cool!",
+    ];
+  }
+
+  void _startCommentStream(int cameraIndex) {
+    _commentTimersPerCamera[cameraIndex]?.cancel();
+
+    _commentTimersPerCamera[cameraIndex] = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) async {
+        if (!mounted || _isPaused || !_isPlayingList[cameraIndex]) return;
+
+        List<String> comments;
+        try {
+          comments = await _fetchCommentsFromApi(cameraIndex);
+        } catch (e) {
+          developer.log('Error fetching comments: $e');
+          return;
+        }
+
+        if (comments.isEmpty) return;
+
+        final commentText =
+            comments[_commentIndicesPerCamera[cameraIndex] % comments.length];
+        final user = _users[Random().nextInt(_users.length)];
+        _commentIndicesPerCamera[cameraIndex]++;
+
+        final controller = AnimationController(
+          vsync: this,
+          duration: const Duration(seconds: 6),
+        );
+
+        final animation = Tween<Offset>(
+          begin: const Offset(0, 1.0),
+          end: const Offset(0, 0),
+        ).animate(CurvedAnimation(parent: controller, curve: Curves.easeOut));
+
+        final fadeAnimation = Tween<double>(
+          begin: 1.0,
+          end: 0.0,
+        ).animate(CurvedAnimation(parent: controller, curve: Curves.easeOut));
+
+        final comment = _LiveComment(
+          text: commentText,
+          username: user['name']!,
+          avatarPath: user['avatar']!,
+          key: UniqueKey(),
+          controller: controller,
+          animation: animation,
+          fadeAnimation: fadeAnimation,
+        );
+
+        controller.addStatusListener((status) {
+          if (status == AnimationStatus.completed) {
+            controller.dispose();
+            if (!mounted) return;
+            setState(() {
+              _activeCommentsPerCamera[cameraIndex].removeWhere(
+                (c) => c.key == comment.key,
+              );
+            });
+          }
+        });
+
+        setState(() {
+          _activeCommentsPerCamera[cameraIndex].add(comment);
+        });
+
+        controller.forward();
+      },
+    );
   }
 
   Widget _buildCameraTile(int index) {
@@ -192,8 +301,6 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     final controller = _controllers[index];
     final hasError = _hasError[index];
     final isPlaying = _isPlayingList[index];
-    final label = _predictedLabels[index];
-    final probability = _predictedProbabilities[index];
 
     final bool hasValidStream = controller != null && !hasError;
 
@@ -201,96 +308,174 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
       key: ValueKey('camera_tile_$index'),
       child: Container(
         decoration: BoxDecoration(
-          color:
-              hasValidStream
-                  ? Colors.transparent
-                  : Colors.white.withOpacity(0.3),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade400),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: const Color.fromARGB(255, 154, 154, 154),
+            width: 1.5,
+          ),
         ),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            if (hasValidStream)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: VlcPlayer(
-                  key: ValueKey('camera_player_$index'),
-                  controller: controller!,
-                  aspectRatio: 16 / 9,
-                  placeholder: const Center(child: CircularProgressIndicator()),
-                  virtualDisplay: false,
-                ),
-              )
-            else
-              const Center(
-                child: Text(
-                  'Add AI Camera',
-                  style: TextStyle(
-                    color: Colors.black54,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-
-            if (hasValidStream)
-              Positioned(
-                left: 8,
-                bottom: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    label.isNotEmpty
-                        ? '${label} (${(probability * 100).toStringAsFixed(1)}%)'
-                        : 'Analyzing...',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            color:
+                hasValidStream
+                    ? const Color.fromARGB(255, 255, 255, 255)
+                    : Colors.white.withOpacity(0.3),
+            child: Stack(
+              clipBehavior: Clip.antiAlias,
+              children: [
+                if (hasValidStream)
+                  Positioned.fill(
+                    child: VlcPlayer(
+                      key: ValueKey('camera_player_$index'),
+                      controller: controller!,
+                      aspectRatio: 16 / 9,
+                      placeholder: const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                      virtualDisplay: true,
                     ),
-                  ),
-                ),
-              ),
-
-            if (hasValidStream && !isPlaying)
-              Positioned.fill(
-                child: GestureDetector(
-                  onTap: () => _togglePlayPause(index),
-                  child: Container(
-                    color: Colors.black45,
-                    child: const Center(
-                      child: Icon(
-                        Icons.play_circle_fill,
-                        size: 48,
-                        color: Colors.white70,
+                  )
+                else
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: Text(
+                        'Add AI Camera',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.black54,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
 
-            if (hasValidStream && isPlaying)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: IconButton(
-                  icon: const Icon(
-                    Icons.pause_circle_filled,
-                    color: Colors.white,
-                    size: 32,
+                if (hasValidStream)
+                  Positioned(
+                    left: 8,
+                    bottom: 40,
+                    child: SizedBox(
+                      width: 220,
+                      height: 100,
+                      child: Stack(
+                        children:
+                            _activeCommentsPerCamera[index].asMap().entries.map(
+                              (entry) {
+                                int commentIndex = entry.key;
+                                var comment = entry.value;
+
+                                return SlideTransition(
+                                  position: comment.animation,
+                                  child: FadeTransition(
+                                    opacity: comment.fadeAnimation,
+                                    child: Padding(
+                                      padding: EdgeInsets.only(
+                                        bottom: commentIndex * 30.0,
+                                      ),
+                                      child: Row(
+                                        key: comment.key,
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.center,
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 12,
+                                            backgroundImage: AssetImage(
+                                              comment.avatarPath,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withOpacity(
+                                                0.65,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  comment.username,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  comment.text,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                  ),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ).toList(),
+                      ),
+                    ),
                   ),
-                  onPressed: () => _togglePlayPause(index),
-                ),
-              ),
-          ],
+
+                if (hasValidStream)
+                  Positioned.fill(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child:
+                          isPlaying
+                              ? GestureDetector(
+                                onTap: () => _togglePlayPause(index),
+                                child: Container(
+                                  color: Colors.transparent,
+                                  child: const Align(
+                                    alignment: Alignment.topRight,
+                                    child: Padding(
+                                      padding: EdgeInsets.all(8.0),
+                                      child: Icon(
+                                        Icons.pause_circle_filled,
+                                        color: Colors.white,
+                                        size: 32,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              )
+                              : GestureDetector(
+                                onTap: () => _togglePlayPause(index),
+                                child: Container(
+                                  color: Colors.black45,
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.play_circle_fill,
+                                      size: 48,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -316,4 +501,24 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
       ),
     );
   }
+}
+
+class _LiveComment {
+  final String text;
+  final String username;
+  final String avatarPath;
+  final Key key;
+  final AnimationController controller;
+  final Animation<Offset> animation;
+  final Animation<double> fadeAnimation;
+
+  _LiveComment({
+    required this.text,
+    required this.username,
+    required this.avatarPath,
+    required this.key,
+    required this.controller,
+    required this.animation,
+    required this.fadeAnimation,
+  });
 }

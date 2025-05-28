@@ -18,7 +18,6 @@ class _SettingsPageState extends State<SettingsPage> {
     'Notification Settings',
     'Privacy & Security',
     'System Updates',
-    'Add AI camera', // Moved to last
   ];
 
   int selectedIndex = 0;

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:eboss_ai/pages/home/controller/home_controller.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -8,12 +10,15 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  final HomeController controller = Get.find<HomeController>();
+
   final List<String> settingsItems = [
     'Make main Camera',
-    'Add AI camera',
+    'Select AI Cameras', // AI camera selection moved here (2nd item)
     'Notification Settings',
     'Privacy & Security',
     'System Updates',
+    'Add AI camera', // Moved to last
   ];
 
   int selectedIndex = 0;
@@ -71,33 +76,96 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildSettingDetails(int index) {
     switch (index) {
       case 0:
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Text(
-              'Make main Camera',
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Configure which camera should be set as the main camera for your system.',
-            ),
-          ],
-        );
-      case 1:
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Text(
-              'Add AI camera',
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Add and configure AI-powered cameras to enhance surveillance capabilities.',
-            ),
-          ],
-        );
+        return Obx(() {
+          final mainIndex = controller.mainCameraIndex.value;
+          final cameraCount = controller.cameraUrls.length;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Make main Camera',
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Configure which camera should be set as the main camera for your system.',
+              ),
+              const SizedBox(height: 24),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: cameraCount,
+                  itemBuilder: (context, i) {
+                    return RadioListTile<int>(
+                      title: Text('Camera ${i + 1}'),
+                      value: i,
+                      groupValue: mainIndex,
+                      onChanged: (value) {
+                        if (value != null) {
+                          controller.mainCameraIndex.value = value;
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        });
+
+      case 1: // AI camera selection tab
+        return Obx(() {
+          final selectedAiIndexes = controller.aiCameraIndexes;
+          final cameraCount = controller.cameraUrls.length;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Select AI Cameras (max 4)',
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              const Text('Choose up to 4 cameras to be used in AI page.'),
+              const SizedBox(height: 24),
+              SizedBox(
+                height: 300, // fixed height to allow ListView to render
+                child: ListView.builder(
+                  itemCount: cameraCount,
+                  itemBuilder: (context, i) {
+                    final isSelected = selectedAiIndexes.contains(i);
+                    return CheckboxListTile(
+                      title: Text('Camera ${i + 1}'),
+                      value: isSelected,
+                      onChanged: (bool? checked) {
+                        if (checked == null) return;
+                        final newSelection = List<int>.from(selectedAiIndexes);
+                        if (checked) {
+                          if (newSelection.length < 4) {
+                            newSelection.add(i);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'You can select up to 4 cameras only.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+                        } else {
+                          newSelection.remove(i);
+                        }
+                        controller.setAiCameraIndexes(newSelection);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        });
+
       case 2:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -110,6 +178,7 @@ class _SettingsPageState extends State<SettingsPage> {
             Text('Manage your notification preferences and alert settings.'),
           ],
         );
+
       case 3:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -124,6 +193,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
         );
+
       case 4:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,6 +206,22 @@ class _SettingsPageState extends State<SettingsPage> {
             Text('Check for system updates and manage update settings.'),
           ],
         );
+
+      case 5:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text(
+              'Add AI camera',
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Add and configure AI-powered cameras to enhance surveillance capabilities.',
+            ),
+          ],
+        );
+
       default:
         return const SizedBox.shrink();
     }

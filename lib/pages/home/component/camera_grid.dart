@@ -1,3 +1,4 @@
+import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_vlc_player/flutter_vlc_player.dart';
@@ -7,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:developer' as developer;
+import 'package:eboss_ai/pages/home/controller/home_controller.dart';
 import 'package:eboss_ai/pages/home/controller/url_field.dart';
 
 class CameraGrid extends StatefulWidget {
@@ -17,14 +19,7 @@ class CameraGrid extends StatefulWidget {
 }
 
 class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
-  int? fullscreenCamera;
-  int? settingsCamera;
-
-  final List<String> cameraUrls = [
-    'rtsp://admin:JZRGJS@192.168.0.104:554/h264/ch01/sub/av_stream',
-    'rtsp://admin:Reolink%40usj1%2Fa@192.168.0.5:554/Preview_01_sub',
-    'rtsp://admin:DKIONN@192.168.0.224:554/h264/ch01/sub/av_stream',
-  ];
+  final HomeController controller = Get.find<HomeController>();
 
   final List<VlcPlayerController?> _controllers = [];
   final List<bool> _isPlayingList = [];
@@ -39,11 +34,24 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
   String? _controllerMessage;
   Timer? _controllerMessageTimer;
 
+  int? fullscreenCamera;
+  int? settingsCamera;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initializeControllers();
+
+    // React to mainCameraIndex changes to rebuild UI
+    ever(controller.mainCameraIndex, (_) {
+      if (mounted) setState(() {});
+    });
+
+    // React to cameraUrls changes to reinitialize controllers
+    ever(controller.cameraUrls, (_) {
+      if (mounted) _initializeControllers();
+    });
   }
 
   @override
@@ -56,10 +64,10 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
 
   void _pauseAllPlayers() {
     for (int i = 0; i < _controllers.length; i++) {
-      final controller = _controllers[i];
-      if (controller != null && _isPlayingList[i]) {
+      final c = _controllers[i];
+      if (c != null && _isPlayingList[i]) {
         try {
-          controller.pause();
+          c.pause();
         } catch (e) {
           developer.log('Error pausing player: $e');
         }
@@ -80,21 +88,20 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
       builder: (context) => const UrlFieldDialog(),
     );
     if (newUrl != null && newUrl.isNotEmpty) {
-      setState(() {
-        cameraUrls.add(newUrl);
-      });
-      _initializeControllers();
+      controller.cameraUrls.add(newUrl);
     }
   }
 
   void _initializeControllers() {
+    _cancelTimers();
+
     _controllers.clear();
     _isPlayingList.clear();
     _needsInitialization.clear();
     _playerKeys.clear();
     _screenshotControllers.clear();
 
-    for (int i = 0; i < cameraUrls.length; i++) {
+    for (int i = 0; i < controller.cameraUrls.length; i++) {
       _controllers.add(null);
       _isPlayingList.add(false);
       _needsInitialization.add(true);
@@ -102,7 +109,7 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
       _screenshotControllers.add(ScreenshotController());
     }
 
-    for (int i = 0; i < cameraUrls.length; i++) {
+    for (int i = 0; i < controller.cameraUrls.length; i++) {
       _createController(i, autoPlay: false);
     }
   }
@@ -117,15 +124,15 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
       }
     }
 
-    final controller = VlcPlayerController.network(
-      cameraUrls[index],
+    final controllerInstance = VlcPlayerController.network(
+      controller.cameraUrls[index],
       hwAcc: HwAcc.full,
       autoPlay: autoPlay,
       options: VlcPlayerOptions(advanced: VlcAdvancedOptions(['--rtsp-tcp'])),
     );
 
     setState(() {
-      _controllers[index] = controller;
+      _controllers[index] = controllerInstance;
       _playerKeys[index] = UniqueKey();
       _needsInitialization[index] = false;
       _isPlayingList[index] = autoPlay;
@@ -154,10 +161,10 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
   void dispose() {
     _controllerMessageTimer?.cancel();
     _cancelTimers();
-    for (var controller in _controllers) {
-      if (controller != null) {
+    for (var c in _controllers) {
+      if (c != null) {
         try {
-          controller.dispose();
+          c.dispose();
         } catch (e) {
           developer.log('Error disposing controller: $e');
         }
@@ -167,22 +174,32 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  void _streamAll() {
+  void _setPlaying(int cameraIndex, bool playing) {
     if (_isTransitioning) return;
 
-    for (int i = 0; i < cameraUrls.length; i++) {
-      final controller = _controllers[i];
-      if (controller == null || _needsInitialization[i]) {
-        _createController(i, autoPlay: true);
-      } else if (!_isPlayingList[i]) {
+    final controllerInstance = _controllers[cameraIndex];
+
+    if (playing) {
+      if (controllerInstance == null || _needsInitialization[cameraIndex]) {
+        _createController(cameraIndex, autoPlay: true);
+      } else {
         try {
-          controller!.play();
+          controllerInstance.play();
           setState(() {
-            _isPlayingList[i] = true;
+            _isPlayingList[cameraIndex] = true;
           });
         } catch (e) {
-          developer.log('Error playing all: $e');
+          developer.log('Error playing: $e');
         }
+      }
+    } else if (controllerInstance != null && _isPlayingList[cameraIndex]) {
+      try {
+        controllerInstance.pause();
+        setState(() {
+          _isPlayingList[cameraIndex] = false;
+        });
+      } catch (e) {
+        developer.log('Error pausing: $e');
       }
     }
   }
@@ -197,13 +214,13 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
 
     for (int i = 0; i < _controllers.length; i++) {
       if (i != cameraIndex) {
-        final controller = _controllers[i];
-        if (controller != null) {
+        final c = _controllers[i];
+        if (c != null) {
           try {
             if (_isPlayingList[i]) {
-              controller.pause();
+              c.pause();
             }
-            controller.dispose();
+            c.dispose();
             _controllers[i] = null;
             _needsInitialization[i] = true;
             _isPlayingList[i] = false;
@@ -225,7 +242,7 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
       if (!mounted) return;
 
       final fullscreenController = VlcPlayerController.network(
-        cameraUrls[cameraIndex],
+        controller.cameraUrls[cameraIndex],
         hwAcc: HwAcc.full,
         autoPlay: true,
         options: VlcPlayerOptions(
@@ -271,13 +288,13 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
 
     for (int i = 0; i < _controllers.length; i++) {
       if (i != cameraIndex) {
-        final controller = _controllers[i];
-        if (controller != null) {
+        final c = _controllers[i];
+        if (c != null) {
           try {
             if (_isPlayingList[i]) {
-              controller.pause();
+              c.pause();
             }
-            controller.dispose();
+            c.dispose();
             _controllers[i] = null;
             _needsInitialization[i] = true;
             _isPlayingList[i] = false;
@@ -299,7 +316,7 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
       if (!mounted) return;
 
       final settingsController = VlcPlayerController.network(
-        cameraUrls[cameraIndex],
+        controller.cameraUrls[cameraIndex],
         hwAcc: HwAcc.full,
         autoPlay: true,
         options: VlcPlayerOptions(
@@ -352,10 +369,10 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
     for (int i = 0; i < _controllers.length; i++) {
-      final controller = _controllers[i];
-      if (controller != null) {
+      final c = _controllers[i];
+      if (c != null) {
         try {
-          controller.dispose();
+          c.dispose();
           _controllers[i] = null;
         } catch (e) {
           developer.log(
@@ -370,7 +387,7 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
     final timer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
 
-      for (int i = 0; i < cameraUrls.length; i++) {
+      for (int i = 0; i < controller.cameraUrls.length; i++) {
         _createController(i, autoPlay: i == previousCamera);
       }
 
@@ -381,36 +398,6 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
       }
     });
     _timers.add(timer);
-  }
-
-  void _setPlaying(int cameraIndex, bool playing) {
-    if (_isTransitioning) return;
-
-    final controller = _controllers[cameraIndex];
-
-    if (playing) {
-      if (controller == null || _needsInitialization[cameraIndex]) {
-        _createController(cameraIndex, autoPlay: true);
-      } else {
-        try {
-          controller.play();
-          setState(() {
-            _isPlayingList[cameraIndex] = true;
-          });
-        } catch (e) {
-          developer.log('Error playing: $e');
-        }
-      }
-    } else if (controller != null && _isPlayingList[cameraIndex]) {
-      try {
-        controller.pause();
-        setState(() {
-          _isPlayingList[cameraIndex] = false;
-        });
-      } catch (e) {
-        developer.log('Error pausing: $e');
-      }
-    }
   }
 
   void _onRecord(int cameraIndex) {
@@ -469,6 +456,16 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final mainIndex = controller.mainCameraIndex.value;
+    final cameraCount = controller.cameraUrls.length;
+
+    // Side cameras excluding main
+    final sideCameraIndexes =
+        List<int>.generate(
+          cameraCount,
+          (i) => i,
+        ).where((i) => i != mainIndex).toList();
+
     // Settings mode
     if (settingsCamera != null) {
       final idx = settingsCamera!;
@@ -571,7 +568,9 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  idx == 0 ? "Main Camera Settings" : "Camera $idx Settings",
+                  idx == mainIndex
+                      ? "Main Camera Settings"
+                      : "Camera $idx Settings",
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 14,
@@ -659,7 +658,7 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  idx == 0 ? "Main Camera" : "Camera $idx",
+                  idx == mainIndex ? "Main Camera" : "Camera $idx",
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 14,
@@ -754,36 +753,29 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
                       SizedBox(
                         width: mainCameraWidth,
                         height: mainCameraHeight,
-                        child: _CameraContainer(
-                          cameraNumber: 0,
-                          label: "Main Camera",
-                          controller:
-                              _controllers.isNotEmpty ? _controllers[0] : null,
-                          playerKey:
-                              _playerKeys.isNotEmpty
-                                  ? _playerKeys[0]
-                                  : UniqueKey(),
-                          isPlaying:
-                              _isPlayingList.isNotEmpty
-                                  ? _isPlayingList[0]
-                                  : false,
-                          onPlayPause: (playing) => _setPlaying(0, playing),
-                          onFullscreen:
-                              _isTransitioning
-                                  ? null
-                                  : () => _enterFullscreen(0),
-                          needsInit:
-                              _needsInitialization.isNotEmpty
-                                  ? _needsInitialization[0]
-                                  : false,
-                          onRecord: () => _onRecord(0),
-                          onScreenshot: () => _onScreenshot(0),
-                          onSettings: () => _enterSettings(0),
-                          screenshotController:
-                              _screenshotControllers.isNotEmpty
-                                  ? _screenshotControllers[0]
-                                  : null,
-                        ),
+                        child:
+                            mainIndex < _controllers.length
+                                ? _CameraContainer(
+                                  cameraNumber: mainIndex,
+                                  label: "Main Camera",
+                                  controller: _controllers[mainIndex],
+                                  playerKey: _playerKeys[mainIndex],
+                                  isPlaying: _isPlayingList[mainIndex],
+                                  onPlayPause:
+                                      (playing) =>
+                                          _setPlaying(mainIndex, playing),
+                                  onFullscreen:
+                                      _isTransitioning
+                                          ? null
+                                          : () => _enterFullscreen(mainIndex),
+                                  needsInit: _needsInitialization[mainIndex],
+                                  onRecord: () => _onRecord(mainIndex),
+                                  onScreenshot: () => _onScreenshot(mainIndex),
+                                  onSettings: () => _enterSettings(mainIndex),
+                                  screenshotController:
+                                      _screenshotControllers[mainIndex],
+                                )
+                                : _buildAddCameraPlaceholder(mainIndex),
                       ),
                       SizedBox(width: betweenColumnsPadding),
                       SizedBox(
@@ -793,76 +785,100 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
                           children: [
                             SizedBox(
                               height: eachSideCameraHeight,
-                              child: _CameraContainer(
-                                cameraNumber: 1,
-                                label: "Camera 1",
-                                controller:
-                                    _controllers.length > 1
-                                        ? _controllers[1]
-                                        : null,
-                                playerKey:
-                                    _playerKeys.length > 1
-                                        ? _playerKeys[1]
-                                        : UniqueKey(),
-                                isPlaying:
-                                    _isPlayingList.length > 1
-                                        ? _isPlayingList[1]
-                                        : false,
-                                onPlayPause:
-                                    (playing) => _setPlaying(1, playing),
-                                onFullscreen:
-                                    _isTransitioning
-                                        ? null
-                                        : () => _enterFullscreen(1),
-                                needsInit:
-                                    _needsInitialization.length > 1
-                                        ? _needsInitialization[1]
-                                        : false,
-                                onRecord: () => _onRecord(1),
-                                onScreenshot: () => _onScreenshot(1),
-                                onSettings: () => _enterSettings(1),
-                                screenshotController:
-                                    _screenshotControllers.length > 1
-                                        ? _screenshotControllers[1]
-                                        : null,
-                              ),
+                              child:
+                                  sideCameraIndexes.length > 0 &&
+                                          sideCameraIndexes[0] <
+                                              _controllers.length
+                                      ? _CameraContainer(
+                                        cameraNumber: sideCameraIndexes[0],
+                                        label: "Camera ${sideCameraIndexes[0]}",
+                                        controller:
+                                            _controllers[sideCameraIndexes[0]],
+                                        playerKey:
+                                            _playerKeys[sideCameraIndexes[0]],
+                                        isPlaying:
+                                            _isPlayingList[sideCameraIndexes[0]],
+                                        onPlayPause:
+                                            (playing) => _setPlaying(
+                                              sideCameraIndexes[0],
+                                              playing,
+                                            ),
+                                        onFullscreen:
+                                            _isTransitioning
+                                                ? null
+                                                : () => _enterFullscreen(
+                                                  sideCameraIndexes[0],
+                                                ),
+                                        needsInit:
+                                            _needsInitialization[sideCameraIndexes[0]],
+                                        onRecord:
+                                            () =>
+                                                _onRecord(sideCameraIndexes[0]),
+                                        onScreenshot:
+                                            () => _onScreenshot(
+                                              sideCameraIndexes[0],
+                                            ),
+                                        onSettings:
+                                            () => _enterSettings(
+                                              sideCameraIndexes[0],
+                                            ),
+                                        screenshotController:
+                                            _screenshotControllers[sideCameraIndexes[0]],
+                                      )
+                                      : _buildAddCameraPlaceholder(
+                                        sideCameraIndexes.isNotEmpty
+                                            ? sideCameraIndexes[0]
+                                            : 1,
+                                      ),
                             ),
                             SizedBox(height: betweenCamerasPadding),
                             SizedBox(
                               height: eachSideCameraHeight,
-                              child: _CameraContainer(
-                                cameraNumber: 2,
-                                label: "Camera 2",
-                                controller:
-                                    _controllers.length > 2
-                                        ? _controllers[2]
-                                        : null,
-                                playerKey:
-                                    _playerKeys.length > 2
-                                        ? _playerKeys[2]
-                                        : UniqueKey(),
-                                isPlaying:
-                                    _isPlayingList.length > 2
-                                        ? _isPlayingList[2]
-                                        : false,
-                                onPlayPause:
-                                    (playing) => _setPlaying(2, playing),
-                                onFullscreen:
-                                    _isTransitioning
-                                        ? null
-                                        : () => _enterFullscreen(2),
-                                needsInit:
-                                    _needsInitialization.length > 2
-                                        ? _needsInitialization[2]
-                                        : false,
-                                onRecord: () => _onRecord(2),
-                                onScreenshot: () => _onScreenshot(2),
-                                onSettings: () => _enterSettings(2),
-                                screenshotController:
-                                    _screenshotControllers.length > 2
-                                        ? _screenshotControllers[2]
-                                        : null,
-                              ),
+                              child:
+                                  sideCameraIndexes.length > 1 &&
+                                          sideCameraIndexes[1] <
+                                              _controllers.length
+                                      ? _CameraContainer(
+                                        cameraNumber: sideCameraIndexes[1],
+                                        label: "Camera ${sideCameraIndexes[1]}",
+                                        controller:
+                                            _controllers[sideCameraIndexes[1]],
+                                        playerKey:
+                                            _playerKeys[sideCameraIndexes[1]],
+                                        isPlaying:
+                                            _isPlayingList[sideCameraIndexes[1]],
+                                        onPlayPause:
+                                            (playing) => _setPlaying(
+                                              sideCameraIndexes[1],
+                                              playing,
+                                            ),
+                                        onFullscreen:
+                                            _isTransitioning
+                                                ? null
+                                                : () => _enterFullscreen(
+                                                  sideCameraIndexes[1],
+                                                ),
+                                        needsInit:
+                                            _needsInitialization[sideCameraIndexes[1]],
+                                        onRecord:
+                                            () =>
+                                                _onRecord(sideCameraIndexes[1]),
+                                        onScreenshot:
+                                            () => _onScreenshot(
+                                              sideCameraIndexes[1],
+                                            ),
+                                        onSettings:
+                                            () => _enterSettings(
+                                              sideCameraIndexes[1],
+                                            ),
+                                        screenshotController:
+                                            _screenshotControllers[sideCameraIndexes[1]],
+                                      )
+                                      : _buildAddCameraPlaceholder(
+                                        sideCameraIndexes.length > 1
+                                            ? sideCameraIndexes[1]
+                                            : 2,
+                                      ),
                             ),
                           ],
                         ),
@@ -873,31 +889,19 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
-                      children: [
-                        SizedBox(
-                          width: (totalWidth - 20) / 3,
-                          child: AspectRatio(
-                            aspectRatio: 16 / 9,
-                            child: _buildAddCameraPlaceholder(3),
+                      children: List.generate(
+                        3,
+                        (i) => Padding(
+                          padding: EdgeInsets.only(right: i < 2 ? 10 : 0),
+                          child: SizedBox(
+                            width: (totalWidth - 20) / 3,
+                            child: AspectRatio(
+                              aspectRatio: 16 / 9,
+                              child: _buildAddCameraPlaceholder(i + 3),
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          width: (totalWidth - 20) / 3,
-                          child: AspectRatio(
-                            aspectRatio: 16 / 9,
-                            child: _buildAddCameraPlaceholder(4),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          width: (totalWidth - 20) / 3,
-                          child: AspectRatio(
-                            aspectRatio: 16 / 9,
-                            child: _buildAddCameraPlaceholder(5),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 32),
@@ -911,7 +915,14 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
           right: 24,
           child: FloatingActionButton.extended(
             heroTag: "stream_all",
-            onPressed: _isTransitioning ? null : _streamAll,
+            onPressed:
+                _isTransitioning
+                    ? null
+                    : () {
+                      for (int i = 0; i < controller.cameraUrls.length; i++) {
+                        _setPlaying(i, true);
+                      }
+                    },
             backgroundColor: Colors.white.withOpacity(0.5),
             elevation: 2,
             icon: Container(
@@ -939,6 +950,8 @@ class _CameraGridState extends State<CameraGrid> with WidgetsBindingObserver {
     );
   }
 }
+
+// The rest of your CameraControlPanel, FullscreenCameraView, _CameraContainer, CameraStreamWidget remain unchanged.
 
 class CameraControlPanel extends StatelessWidget {
   final ValueChanged<String> onControl;

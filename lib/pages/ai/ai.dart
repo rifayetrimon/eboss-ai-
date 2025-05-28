@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_vlc_player/flutter_vlc_player.dart';
 import 'dart:developer' as developer;
+import 'package:get/get.dart';
+import 'package:eboss_ai/pages/home/controller/home_controller.dart';
 
 class AiPage extends StatefulWidget {
   const AiPage({super.key});
@@ -13,16 +15,12 @@ class AiPage extends StatefulWidget {
 
 class _AiPageState extends State<AiPage>
     with WidgetsBindingObserver, TickerProviderStateMixin {
-  final List<String?> cameraUrls = [
-    'rtsp://admin:JZRGJS@192.168.0.104:554/h264/ch01/sub/av_stream',
-    'rtsp://admin:DKIONN@192.168.0.224:554/h264/ch01/sub/av_stream',
-    '',
-    '',
-  ];
+  final HomeController controller = Get.find<HomeController>();
 
-  late final List<VlcPlayerController?> _controllers;
-  late final List<bool> _isPlayingList;
-  late final List<bool> _hasError;
+  late List<String?> cameraUrls;
+  late List<VlcPlayerController?> _controllers;
+  late List<bool> _isPlayingList;
+  late List<bool> _hasError;
 
   bool _isPaused = false;
 
@@ -42,6 +40,9 @@ class _AiPageState extends State<AiPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    _updateCameraUrls();
+
     _initializeState();
     _initializeControllers();
 
@@ -49,12 +50,27 @@ class _AiPageState extends State<AiPage>
     _commentIndicesPerCamera = List.generate(cameraUrls.length, (_) => 0);
     _commentTimersPerCamera = List.generate(cameraUrls.length, (_) => null);
 
-    // Start comment streams only for cameras that are playing (initially none)
-    for (int i = 0; i < cameraUrls.length; i++) {
-      if ((cameraUrls[i]?.isNotEmpty ?? false) && _isPlayingList[i]) {
-        _startCommentStream(i);
+    // Listen for changes in AI camera selection
+    ever(controller.aiCameraIndexes, (_) {
+      if (mounted) {
+        _updateCameraUrls();
+        _initializeState();
+        _initializeControllers();
+        setState(() {});
       }
-    }
+    });
+  }
+
+  void _updateCameraUrls() {
+    cameraUrls =
+        controller.aiCameraIndexes
+            .map(
+              (index) =>
+                  index < controller.cameraUrls.length
+                      ? controller.cameraUrls[index]
+                      : null,
+            )
+            .toList();
   }
 
   void _initializeState() {
@@ -199,23 +215,18 @@ class _AiPageState extends State<AiPage>
       if (_isPlayingList[index]) {
         controller.pause();
         _isPlayingList[index] = false;
-        // Stop comment stream and clear comments for this camera
         _commentTimersPerCamera[index]?.cancel();
         _commentTimersPerCamera[index] = null;
         _activeCommentsPerCamera[index].clear();
       } else {
         controller.play();
         _isPlayingList[index] = true;
-        // Start comment stream for this camera
-        if (_commentTimersPerCamera[index] == null) {
-          _startCommentStream(index);
-        }
+        // Comments stream disabled for demo
       }
     });
   }
 
   Future<List<String>> _fetchCommentsFromApi(int cameraIndex) async {
-    // TODO: Replace with your real API call to fetch comments for the camera
     await Future.delayed(const Duration(milliseconds: 500));
     return [
       "❤️ Awesome stream!",
@@ -328,7 +339,7 @@ class _AiPageState extends State<AiPage>
                   Positioned.fill(
                     child: VlcPlayer(
                       key: ValueKey('camera_player_$index'),
-                      controller: controller!,
+                      controller: controller,
                       aspectRatio: 16 / 9,
                       placeholder: const Center(
                         child: CircularProgressIndicator(),

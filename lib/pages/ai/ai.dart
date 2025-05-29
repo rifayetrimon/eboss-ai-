@@ -4,13 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 class AiPage extends StatelessWidget {
-  // FIX: Initialize controller with Get.put()
   final WebSocketController controller = Get.put(
     WebSocketController(),
     permanent: true,
   );
-
-  // this page is used to display the camera feeds
 
   @override
   Widget build(BuildContext context) {
@@ -47,11 +44,11 @@ class AiPage extends StatelessWidget {
       return Container(
         key: ValueKey('camera_tile_$index'),
         decoration: BoxDecoration(
-          color: const ui.Color.fromARGB(255, 255, 255, 255).withOpacity(0.1),
+          color: Colors.black.withOpacity(0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: const ui.Color.fromARGB(255, 255, 255, 255),
-            width: 1.5,
+            color: const ui.Color.fromARGB(255, 255, 255, 255).withOpacity(0.3),
+            width: 1,
           ),
           boxShadow: [
             BoxShadow(
@@ -60,7 +57,7 @@ class AiPage extends StatelessWidget {
                 255,
                 255,
                 255,
-              ).withOpacity(0.3),
+              ).withOpacity(0.1),
               blurRadius: 8,
               spreadRadius: 2,
             ),
@@ -97,7 +94,7 @@ class AiPage extends StatelessWidget {
                   child: Text(
                     "Camera $index",
                     style: const TextStyle(
-                      // color: Colors.black,
+                      color: Colors.black,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
@@ -128,45 +125,39 @@ class AiPage extends StatelessWidget {
               ),
 
               // Control bar
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    // color: Colors.black.withOpacity(0.6),
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(12),
-                      bottomRight: Radius.circular(12),
+              if (!isLoading && !hasError)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        IconButton(
+                          icon: const Icon(
+                            Icons.camera_alt,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          onPressed: () => controller.saveScreenshot(index),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            isPlaying ? Icons.pause : Icons.play_arrow,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          onPressed: () => controller.togglePlayPause(index),
+                        ),
+                      ],
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      IconButton(
-                        icon: const Icon(
-                          Icons.camera_alt,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        onPressed: () => controller.saveScreenshot(index),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          isPlaying ? Icons.pause : Icons.play_arrow,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        onPressed: () => controller.togglePlayPause(index),
-                      ),
-                    ],
-                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -180,31 +171,39 @@ class AiPage extends StatelessWidget {
 
   Widget _buildPausedState(int index) {
     return Container(
-      color: const ui.Color.fromARGB(255, 255, 255, 255).withOpacity(0.3),
+      color: Colors.white.withOpacity(0.1),
       child: Center(
-        child: IconButton(
-          icon: const Icon(
-            Icons.play_circle_filled,
-            size: 48,
-            color: ui.Color.fromARGB(255, 255, 255, 255),
+        child: GestureDetector(
+          onTap: () => controller.togglePlayPause(index),
+          child: Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.8),
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: Icon(Icons.play_arrow, color: Colors.black, size: 36),
+            ),
           ),
-          onPressed: () => controller.togglePlayPause(index),
         ),
       ),
     );
   }
 
   Widget _buildLoadingState() {
-    return const ColoredBox(
-      color: Colors.black12,
-      child: Center(child: CircularProgressIndicator()),
+    return Container(
+      color: Colors.black,
+      child: const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      ),
     );
   }
 
   Widget _buildErrorState() {
-    return const ColoredBox(
-      color: Colors.black12,
-      child: Center(
+    return Container(
+      color: Colors.black,
+      child: const Center(
         child: Icon(Icons.error_outline, color: Colors.red, size: 48),
       ),
     );

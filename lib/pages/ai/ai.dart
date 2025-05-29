@@ -10,6 +10,8 @@ class AiPage extends StatelessWidget {
     permanent: true,
   );
 
+  // this page is used to display the camera feeds
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(

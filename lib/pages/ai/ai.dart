@@ -1,11 +1,14 @@
-// ai_page.dart
 import 'dart:ui' as ui;
+import 'package:eboss_ai/pages/ai/controller/websocket_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:eboss_ai/pages/ai/controller/websocket_controller.dart';
 
 class AiPage extends StatelessWidget {
-  final WebSocketController controller = Get.put(WebSocketController());
+  // FIX: Initialize controller with Get.put()
+  final WebSocketController controller = Get.put(
+    WebSocketController(),
+    permanent: true,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +37,7 @@ class AiPage extends StatelessWidget {
 
   Widget _buildCameraTile(int index) {
     return Obx(() {
+      final isPlaying = controller.isPlaying[index];
       final isLoading = controller.isLoading[index];
       final hasError = controller.hasError[index];
       final camera = controller.cameras[index];
@@ -41,31 +45,125 @@ class AiPage extends StatelessWidget {
       return Container(
         key: ValueKey('camera_tile_$index'),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
+          color: const ui.Color.fromARGB(255, 255, 255, 255).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: const Color.fromARGB(255, 154, 154, 154),
+            color: const ui.Color.fromARGB(255, 255, 255, 255),
             width: 1.5,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: const ui.Color.fromARGB(
+                255,
+                255,
+                255,
+                255,
+              ).withOpacity(0.3),
+              blurRadius: 8,
+              spreadRadius: 2,
+            ),
+          ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           child: Stack(
             fit: StackFit.expand,
             children: [
               // Camera feed display
-              if (camera != null)
+              if (isPlaying && camera != null)
                 _buildCameraImage(camera)
-              else if (isLoading)
+              else if (isPlaying && isLoading)
                 _buildLoadingState()
+              else if (isPlaying && hasError)
+                _buildErrorState()
               else
-                _buildErrorState(),
+                _buildPausedState(index),
 
-              // Status overlay
+              // Camera label
               Positioned(
-                bottom: 8,
+                top: 8,
                 left: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    "Camera $index",
+                    style: const TextStyle(
+                      // color: Colors.black,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+
+              // Status indicator
+              Positioned(
+                top: 8,
                 right: 8,
-                child: _buildStatusIndicator(index),
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color:
+                        !isPlaying
+                            ? Colors.grey
+                            : hasError
+                            ? Colors.red
+                            : isLoading
+                            ? Colors.orange
+                            : Colors.green,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1),
+                  ),
+                ),
+              ),
+
+              // Control bar
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    // color: Colors.black.withOpacity(0.6),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(12),
+                      bottomRight: Radius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          Icons.camera_alt,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        onPressed: () => controller.saveScreenshot(index),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          isPlaying ? Icons.pause : Icons.play_arrow,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        onPressed: () => controller.togglePlayPause(index),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -76,6 +174,22 @@ class AiPage extends StatelessWidget {
 
   Widget _buildCameraImage(ui.Image image) {
     return CustomPaint(painter: _CameraImagePainter(image));
+  }
+
+  Widget _buildPausedState(int index) {
+    return Container(
+      color: const ui.Color.fromARGB(255, 255, 255, 255).withOpacity(0.3),
+      child: Center(
+        child: IconButton(
+          icon: const Icon(
+            Icons.play_circle_filled,
+            size: 48,
+            color: ui.Color.fromARGB(255, 255, 255, 255),
+          ),
+          onPressed: () => controller.togglePlayPause(index),
+        ),
+      ),
+    );
   }
 
   Widget _buildLoadingState() {
@@ -92,49 +206,6 @@ class AiPage extends StatelessWidget {
         child: Icon(Icons.error_outline, color: Colors.red, size: 48),
       ),
     );
-  }
-
-  Widget _buildStatusIndicator(int index) {
-    return Obx(() {
-      final isLoading = controller.isLoading[index];
-      final hasError = controller.hasError[index];
-
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.black54,
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isLoading
-                  ? Icons.refresh
-                  : hasError
-                  ? Icons.error
-                  : Icons.check_circle,
-              color:
-                  isLoading
-                      ? Colors.blue
-                      : hasError
-                      ? Colors.red
-                      : Colors.green,
-              size: 16,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              isLoading
-                  ? 'Connecting...'
-                  : hasError
-                  ? 'Connection lost'
-                  : 'Live',
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-            ),
-          ],
-        ),
-      );
-    });
   }
 }
 

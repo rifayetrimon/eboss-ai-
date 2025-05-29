@@ -39,7 +39,7 @@ class HomePage extends StatelessWidget {
                 controller: controller.pageController,
                 physics: const NeverScrollableScrollPhysics(),
                 onPageChanged: (index) => controller.currentIndex.value = index,
-                children: const [CameraGrid(), AiPage(), SettingsPage()],
+                children: [const CameraGrid(), AiPage(), const SettingsPage()],
               ),
             ),
           ),

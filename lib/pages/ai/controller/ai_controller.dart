@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-class HomeController extends GetxController {
-  // Existing page controller state
+class AIController extends GetxController {
+  // AI page current index and page controller
   final RxInt currentIndex = 0.obs;
   late PageController pageController;
 
-  // Main camera index
-  var mainCameraIndex = 0.obs;
-
-  // List of all camera URLs
+  // List of all camera URLs (can be shared or separate)
   final RxList<String> cameraUrls =
       <String>[
         'rtsp://admin:JZRGJS@192.168.0.104:554/h264/ch01/sub/av_stream',
@@ -25,6 +22,8 @@ class HomeController extends GetxController {
   void onInit() {
     super.onInit();
     pageController = PageController(initialPage: currentIndex.value);
+
+    // Ensure aiCameraIndexes are always valid
     _validateAiCameraIndexes();
   }
 
@@ -51,7 +50,16 @@ class HomeController extends GetxController {
     );
   }
 
-  // Camera management methods
+  // AI camera selection methods
+  void setAiCameraIndexes(List<int> indexes) {
+    if (indexes.length <= 4) {
+      final validIndexes =
+          indexes.where((i) => i >= 0 && i < cameraUrls.length).toList();
+      aiCameraIndexes.value = validIndexes;
+    }
+  }
+
+  // Add camera management methods
   void addCamera(String url) {
     cameraUrls.add(url);
     _validateAiCameraIndexes();
@@ -60,11 +68,6 @@ class HomeController extends GetxController {
   void removeCameraAt(int index) {
     if (index >= 0 && index < cameraUrls.length) {
       cameraUrls.removeAt(index);
-
-      // Adjust mainCameraIndex if needed
-      if (mainCameraIndex.value >= cameraUrls.length) {
-        mainCameraIndex.value = cameraUrls.isEmpty ? 0 : cameraUrls.length - 1;
-      }
 
       // Remove the deleted camera from AI indexes
       aiCameraIndexes.removeWhere((i) => i == index);
@@ -77,22 +80,6 @@ class HomeController extends GetxController {
       }
 
       _validateAiCameraIndexes();
-    }
-  }
-
-  void setMainCameraIndex(int index) {
-    if (index >= 0 && index < cameraUrls.length) {
-      mainCameraIndex.value = index;
-    }
-  }
-
-  // AI camera selection methods
-  void setAiCameraIndexes(List<int> indexes) {
-    if (indexes.length <= 4) {
-      // Validate indexes are within range
-      final validIndexes =
-          indexes.where((i) => i >= 0 && i < cameraUrls.length).toList();
-      aiCameraIndexes.value = validIndexes;
     }
   }
 
